@@ -97,8 +97,8 @@ char * PlaybackDevices = NULL;
 int CaptureCount = 0;
 int PlaybackCount = 0;
 
-char CaptureNames[16][256]= {""};
-char PlaybackNames[16][256]= {""};
+char CaptureNames[256][256]= {""};
+char PlaybackNames[256][256]= {""};
 
 int txLatency;
 
@@ -234,6 +234,12 @@ short * SendtoCard(unsigned short * buf, int n)
 	int NextBuffer = Index;
 	char Msg[80];
 
+	if (SoundMode == 5)			// QSound
+	{
+		sendSamplestoQSound(buf, n);
+		return buf;
+	}
+
 	NextBuffer++;
 
 	if (NextBuffer > 3)
@@ -316,49 +322,55 @@ void GetSoundDevices()
 		return;
 	}
 
-	Debugprintf("Capture Devices");
-
-	CaptureCount = waveInGetNumDevs();
-
-	CaptureDevices = malloc((MAXPNAMELEN + 2) * (CaptureCount + 2));
-	CaptureDevices[0] = 0;
-	
-	for (i = 0; i < CaptureCount; i++)
+	if (SoundMode == 0)
 	{
-		waveInOpen(&hWaveIn, i, &wfx, 0, 0, CALLBACK_NULL); //WAVE_MAPPER
-		waveInGetDevCapsA((UINT_PTR)hWaveIn, &pwic, sizeof(WAVEINCAPSA));
 
-		if (CaptureDevices)
-			strcat(CaptureDevices, ",");
-		strcat(CaptureDevices, pwic.szPname);
-		Debugprintf("%d %s", i, pwic.szPname);
-		memcpy(&CaptureNames[i][0], pwic.szPname, MAXPNAMELEN);
-		_strupr(&CaptureNames[i][0]);
-	}
 
-	CaptureCount++;
-	Debugprintf("%d %s", i, "STDIN");
-	strcpy(&CaptureNames[i][0], "STDIN"); 
 
-	Debugprintf("Playback Devices");
+		Debugprintf("Capture Devices");
 
-	PlaybackCount = waveOutGetNumDevs();
+		CaptureCount = waveInGetNumDevs();
 
-	PlaybackDevices = malloc((MAXPNAMELEN + 2) * PlaybackCount);
-	PlaybackDevices[0] = 0;
+		CaptureDevices = malloc((MAXPNAMELEN + 2) * (CaptureCount + 2));
+		CaptureDevices[0] = 0;
 
-	for (i = 0; i < PlaybackCount; i++)
-	{
-		waveOutOpen(&hWaveOut, i, &wfx, 0, 0, CALLBACK_NULL); //WAVE_MAPPER
-		waveOutGetDevCapsA((UINT_PTR)hWaveOut, &pwoc, sizeof(WAVEOUTCAPSA));
+		for (i = 0; i < CaptureCount; i++)
+		{
+			waveInOpen(&hWaveIn, i, &wfx, 0, 0, CALLBACK_NULL); //WAVE_MAPPER
+			waveInGetDevCapsA((UINT_PTR)hWaveIn, &pwic, sizeof(WAVEINCAPSA));
 
-		if (PlaybackDevices[0])
-			strcat(PlaybackDevices, ",");
-		strcat(PlaybackDevices, pwoc.szPname);
-		Debugprintf("%i %s", i, pwoc.szPname);
-		memcpy(&PlaybackNames[i][0], pwoc.szPname, MAXPNAMELEN);
-		_strupr(&PlaybackNames[i][0]);
-		waveOutClose(hWaveOut);
+			if (CaptureDevices)
+				strcat(CaptureDevices, ",");
+			strcat(CaptureDevices, pwic.szPname);
+			Debugprintf("%d %s", i, pwic.szPname);
+			memcpy(&CaptureNames[i][0], pwic.szPname, MAXPNAMELEN);
+			_strupr(&CaptureNames[i][0]);
+		}
+
+		CaptureCount++;
+		Debugprintf("%d %s", i, "STDIN");
+		strcpy(&CaptureNames[i][0], "STDIN");
+
+		Debugprintf("Playback Devices");
+
+		PlaybackCount = waveOutGetNumDevs();
+
+		PlaybackDevices = malloc((MAXPNAMELEN + 2) * PlaybackCount);
+		PlaybackDevices[0] = 0;
+
+		for (i = 0; i < PlaybackCount; i++)
+		{
+			waveOutOpen(&hWaveOut, i, &wfx, 0, 0, CALLBACK_NULL); //WAVE_MAPPER
+			waveOutGetDevCapsA((UINT_PTR)hWaveOut, &pwoc, sizeof(WAVEOUTCAPSA));
+
+			if (PlaybackDevices[0])
+				strcat(PlaybackDevices, ",");
+			strcat(PlaybackDevices, pwoc.szPname);
+			Debugprintf("%i %s", i, pwoc.szPname);
+			memcpy(&PlaybackNames[i][0], pwoc.szPname, MAXPNAMELEN);
+			_strupr(&PlaybackNames[i][0]);
+			waveOutClose(hWaveOut);
+		}
 	}
 }
 
@@ -369,6 +381,9 @@ int onlyMixSnoop = 0;
 int InitSound(BOOL Report)
 {
 	int i, ret;
+
+	if (SoundMode == 5)
+		return 1;				// QSound already set up
 
 	if (SoundMode == 4)
 	{
@@ -520,7 +535,7 @@ for (i = 0; i < 100; i++)
 	return TRUE;
 }
 
-static int minL = 0, maxL = 0, minR = 0; maxR = 0, lastlevelGUI = 0, lastlevelreport = 0;
+static int minL = 0, maxL = 0, minR = 0, maxR = 0, lastlevelGUI = 0, lastlevelreport = 0;
 
 UCHAR CurrentLevel = 0;		// Peak from current samples
 UCHAR CurrentLevelR = 0;	// Peak from current samples
@@ -727,16 +742,25 @@ void SoundFlush()
 
 	SendtoCard(buffer[Index], Number);
 
-	//	Wait for all sound output to complete
+	if (SoundMode == 5)
+	{
+		while (SoundIsPlaying)
+			txSleep(10);
+	}
+	else
+	{
 
-	while (!(header[0].dwFlags & WHDR_DONE))
-		txSleep(10);
-	while (!(header[1].dwFlags & WHDR_DONE))
-		txSleep(10);
-	while (!(header[2].dwFlags & WHDR_DONE))
-		txSleep(10);
-	while (!(header[3].dwFlags & WHDR_DONE))
-		txSleep(10);
+		//	Wait for all sound output to complete
+
+		while (!(header[0].dwFlags & WHDR_DONE))
+			txSleep(10);
+		while (!(header[1].dwFlags & WHDR_DONE))
+			txSleep(10);
+		while (!(header[2].dwFlags & WHDR_DONE))
+			txSleep(10);
+		while (!(header[3].dwFlags & WHDR_DONE))
+			txSleep(10);
+	}
 
 	// I think we should turn round the link here. I dont see the point in
 	// waiting for MainPoll

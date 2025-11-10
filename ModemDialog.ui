@@ -110,18 +110,18 @@
          <rect>
           <x>100</x>
           <y>221</y>
-          <width>69</width>
+          <width>81</width>
           <height>22</height>
          </rect>
         </property>
         <item>
          <property name="text">
-          <string>NONE</string>
+          <string>None</string>
          </property>
         </item>
         <item>
          <property name="text">
-          <string>SINGLE</string>
+          <string>Single</string>
          </property>
         </item>
        </widget>
@@ -247,7 +247,7 @@
          <rect>
           <x>100</x>
           <y>251</y>
-          <width>65</width>
+          <width>81</width>
           <height>22</height>
          </rect>
         </property>

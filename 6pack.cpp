@@ -265,10 +265,9 @@ void decode_prio_command(unsigned char cmd, struct ax_disp *ax)
 /* try to resync the TNC. Called by the resync timer defined in
   decode_prio_command */
 
-static void
-resync_tnc(unsigned long channel)
+static void resync_tnc(unsigned long channel)
 {
-	static char resync_cmd = SIXP_INIT_CMD;
+	static unsigned char resync_cmd = SIXP_INIT_CMD;
 	struct ax_disp *ax = (struct ax_disp *) channel;
 
 	Debugprintf("6pack: resyncing TNC\n");

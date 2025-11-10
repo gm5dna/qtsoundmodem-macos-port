@@ -30,6 +30,7 @@ extern int needRSID[4];
 
 BOOL useKISSControls = 0;
 
+
 #define FEND 0xc0
 #define FESC 0xDB
 #define TFEND 0xDC
@@ -85,7 +86,9 @@ void AGW_AX25_disc(TAX25Port * AX25Sess, Byte mode);
 void AGW_AX25_conn(TAX25Port * AX25Sess, int snd_ch, Byte mode);
 int number_digi(char * path);
 void AGW_AX25_data_in(void  * socket, int snd_ch, int PID, Byte * path, string * data);
-
+int RHPLinkRXED(TAX25Port * AX25Sess, int PID, Byte * path, string * data);
+int	RHPLinkConnected(TAX25Port * AX25Sess);
+int	RHPLinkClosed(TAX25Port * AX25Sess);
 
 
 void  inc_frack(TAX25Port * AX25Sess)
@@ -690,7 +693,9 @@ void set_unlink(TAX25Port * AX25Sess, Byte * path)
 		//		if (AX25Sess->digi[0] != 0)
 		//			path: = path + ',' + reverse_digi(AX25Sess->digi);
 
-		AGW_AX25_disc(AX25Sess, MODE_OUR);
+
+		if (RHPLinkClosed(AX25Sess) == 0)		// if RHP connection handle it else pass to AGW
+			AGW_AX25_disc(AX25Sess, MODE_OUR);
 
 		if (AX25Sess->status != STAT_TRY_UNLINK)
 			add_pkt_buf(AX25Sess, make_frame(&nullstring, path, 0, 0, 0, U_FRM, U_DISC, SET_NO_RPT, SET_P, SET_C));
@@ -958,7 +963,8 @@ void  on_I(void * socket, TAX25Port * AX25Sess, int PID, Byte * path, string * d
 
 			collector_data = read_frame_collector(AX25Sess, fecflag);
 
-			AGW_AX25_data_in(socket, AX25Sess->snd_ch, PID, path, stringAdd(data, collector_data->Data, collector_data->Length));
+			if (RHPLinkRXED(AX25Sess, PID, path, stringAdd(data, collector_data->Data, collector_data->Length)) == 0)		// if RHP connection handle it else pass to AGW
+				AGW_AX25_data_in(socket, AX25Sess->snd_ch, PID, path, stringAdd(data, collector_data->Data, collector_data->Length));
 
 			add_pkt_buf(AX25Sess, make_frame(NULL, path, 0, AX25Sess->vr, 0, S_FRM, S_RR, FALSE, pf, SET_R));
 		}
@@ -992,7 +998,9 @@ void  on_SABM(void * socket, TAX25Port * AX25Sess)
 		memset(AX25Sess->mycall, 0, 10);
 		AX25Sess->digi[0] = 0;
 
-		AGW_AX25_disc(AX25Sess, MODE_OTHER);
+		if (RHPLinkClosed(AX25Sess) == 0)		// if RHP connection handle it else pass to AGW
+			AGW_AX25_disc(AX25Sess, MODE_OTHER);
+
 		Clear(&AX25Sess->frame_buf);
 
 		AX25Sess->status = STAT_NO_LINK;
@@ -1000,7 +1008,8 @@ void  on_SABM(void * socket, TAX25Port * AX25Sess)
 
 	if (AX25Sess->status == STAT_TRY_LINK)
 	{
-		AGW_AX25_disc(AX25Sess, MODE_OTHER);
+		if (RHPLinkClosed(AX25Sess) == 0)		// if RHP connection handle it else pass to AGW
+			AGW_AX25_disc(AX25Sess, MODE_OTHER);
 
 		rst_timer(AX25Sess);
 		rst_values(AX25Sess);
@@ -1015,7 +1024,9 @@ void  on_SABM(void * socket, TAX25Port * AX25Sess)
 			AX25Sess->info.stat_r_byte > 0 || AX25Sess->frm_collector.Count > 0)
 		{
 			AX25Sess->info.stat_end_ses = time(NULL);
-			AGW_AX25_disc(AX25Sess, MODE_OTHER);
+			if (RHPLinkClosed(AX25Sess) == 0)		// if RHP connection handle it else pass to AGW
+				AGW_AX25_disc(AX25Sess, MODE_OTHER);
+
 			write_ax25_info(AX25Sess);
 			rst_timer(AX25Sess);
 			rst_values(AX25Sess);
@@ -1045,12 +1056,15 @@ void  on_SABM(void * socket, TAX25Port * AX25Sess)
 	add_pkt_buf(AX25Sess, make_frame(NULL, AX25Sess->Path, 0, 0, 0, U_FRM, U_UA, FALSE, SET_P, SET_R));
 }
 
-void on_DISC(void * socket, TAX25Port * AX25Sess)
+void on_DISC(TAX25Port * AX25Sess)
 {
 	if (AX25Sess->status != STAT_NO_LINK)
 	{
 		AX25Sess->info.stat_end_ses = time(NULL);
-		AGW_AX25_disc(AX25Sess, MODE_OTHER);
+
+		if (RHPLinkClosed(AX25Sess) == 0)		// if RHP connection handle it else pass to AGW
+			AGW_AX25_disc(AX25Sess, MODE_OTHER);
+
 		write_ax25_info(AX25Sess);
 	}
 
@@ -1071,12 +1085,15 @@ void on_DISC(void * socket, TAX25Port * AX25Sess)
 	AX25Sess->status = STAT_NO_LINK;
 }
 
-void on_DM(void * socket, TAX25Port * AX25Sess)
+void on_DM(TAX25Port * AX25Sess)
 {
 	if (AX25Sess->status != STAT_NO_LINK)
 	{
 		AX25Sess->info.stat_end_ses = time(NULL);
-		AGW_AX25_disc(AX25Sess, MODE_OTHER);
+
+		if (RHPLinkClosed(AX25Sess) == 0)		// if RHP connection handle it else pass to AGW
+			AGW_AX25_disc(AX25Sess, MODE_OTHER);
+
 		write_ax25_info(AX25Sess);
 	}
 
@@ -1089,7 +1106,7 @@ void on_DM(void * socket, TAX25Port * AX25Sess)
 }
 
 
-void on_UA(void *socket, TAX25Port * AX25Sess)
+void on_UA(TAX25Port * AX25Sess)
 {
 	switch (AX25Sess->status)
 	{
@@ -1097,13 +1114,19 @@ void on_UA(void *socket, TAX25Port * AX25Sess)
 
 		AX25Sess->info.stat_begin_ses = time(NULL);
 		AX25Sess->status = STAT_LINK;
-		AGW_AX25_conn(AX25Sess, AX25Sess->snd_ch, MODE_OUR);
+
+		if (RHPLinkConnected(AX25Sess) == 0)		// if RHP connection handle it else pass to AGW
+			AGW_AX25_conn(AX25Sess, AX25Sess->snd_ch, MODE_OUR);
+	
 		break;
 
 	case STAT_TRY_UNLINK:
 
 		AX25Sess->info.stat_end_ses = time(NULL);
-		AGW_AX25_disc(AX25Sess, MODE_OUR);
+
+		if (RHPLinkClosed(AX25Sess) == 0)		// if RHP connection handle it else pass to AGW
+			AGW_AX25_disc(AX25Sess, MODE_OUR);
+
 		write_ax25_info(AX25Sess);
 
 		rst_values(AX25Sess);
@@ -1121,13 +1144,14 @@ void on_UI(TAX25Port * AX25Sess, int pf, int cr)
 {
 }
 
-void on_FRMR(void * socket, TAX25Port * AX25Sess, Byte * path)
+void on_FRMR(TAX25Port * AX25Sess, Byte * path)
 {
 	if (AX25Sess->status != STAT_NO_LINK)
 	{
 		AX25Sess->info.stat_end_ses = time(NULL);
 
-		AGW_AX25_disc(AX25Sess, MODE_OTHER);
+		if (RHPLinkClosed(AX25Sess) == 0)		// if RHP connection handle it else pass to AGW
+			AGW_AX25_disc(AX25Sess, MODE_OTHER);
 
 		write_ax25_info(AX25Sess);
 	}
@@ -1158,7 +1182,6 @@ void UpdateActiveConnects(int snd_ch)
 void timer_event()
 {
 	int  snd_ch, port;
-	void * socket;
 	single  frack;
 	Byte  active;
 	TAX25Port * AX25Sess;
@@ -1640,17 +1663,17 @@ void analiz_frame(int snd_ch, string * frame, char * code, boolean fecflag)
 
 	case U_DISC:
 
-		on_DISC(socket, AX25Sess);
+		on_DISC(AX25Sess);
 		break;
 
 	case U_UA:
 
-		on_UA(socket, AX25Sess);
+		on_UA(AX25Sess);
 		break;
 
 	case U_DM:
 
-		on_DM(socket, AX25Sess);
+		on_DM(AX25Sess);
 		break;
 
 	case U_UI:
@@ -1660,7 +1683,7 @@ void analiz_frame(int snd_ch, string * frame, char * code, boolean fecflag)
 
 	case U_FRMR:
 
-		on_FRMR(socket, AX25Sess, path);
+		on_FRMR(AX25Sess, path);
 		break;
 	}
 }

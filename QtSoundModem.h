@@ -13,6 +13,10 @@
 #include <QTcpSocket>
 #include <QUdpSocket>
 #include <QSystemTrayIcon>
+#include <QtMultimedia/QAudioDeviceInfo>
+#include <QtMultimedia/QAudioOutput>
+#include <QtMultimedia/QAudioInput>
+
 
 #include "tcpCode.h"
 
@@ -79,6 +83,13 @@ private slots:
 	void StopWatchdog();
 	void PTTWatchdogExpired();
 	void showRequest(QByteArray Data);
+	void GetAudioDevices();
+	void audioInStateChanged(QAudio::State newState);
+	void audioOutStateChanged(QAudio::State newState);
+	void QtSoundInit();
+	void initializeAudioIn(const QAudioDeviceInfo & deviceInfo);
+	void initializeAudioOut(const QAudioDeviceInfo & deviceInfo);
+	void closeQSound();
 	void clickedSlot();
 	void startCWIDTimerSlot();
 	void setWaterfallImage();

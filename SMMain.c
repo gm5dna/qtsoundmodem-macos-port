@@ -63,7 +63,7 @@ void analiz_frame(int snd_ch, string * frame, char * code, boolean fecflag);
 size_t write(int fd, void * buf, size_t count);
 int close(int fd);
 void SendMgmtPTT(int snd_ch, int PTTState);
-
+void PollQSound();
 
 BOOL KISSServ;
 int KISSPort;
@@ -168,6 +168,7 @@ void soundMain()
 
 	platformInit();
 
+
 	// initialise fft library
 
 	RsCreate();				// RS code for MPSK
@@ -254,7 +255,7 @@ void SampleSink(int LR, short Sample)
 
 void Flush()
 {
-	SoundFlush(Number);
+	SoundFlush();
 }
 
 int ipow(int base, int exp)
@@ -582,9 +583,12 @@ void doCalib(int Chan, int Act)
 	{
 		calib_mode[Chan] = 0;
 		tx_status[Chan] = TX_SILENCE;		// Stop TX
+		SoundIsPlaying = 0;	
 		Flush();
 		RadioPTT(Chan, 0);
 		Debugprintf("Stop Calib");
+
+
 	}
 	else
 	{
@@ -634,6 +638,9 @@ void MainLoop()
 
 	if (UDPServ)
 		UDPPollReceivedSamples();
+
+	if (SoundMode == 5)
+		PollQSound();
 
 	if (SoundMode == 3)
 		UDPPollReceivedSamples();
@@ -1006,7 +1013,7 @@ char HamLibHost[32] = "127.0.0.1";
 int FLRigPort = 12345;
 char FLRigHost[32] = "127.0.0.1";
 
-char CM108Addr[80] = "";
+char CM108Addr[256] = "";
 
 int VID = 0;
 int PID = 0;
@@ -1034,7 +1041,22 @@ void DecodeCM108(char * ptr)
 	hid_device *handle = NULL;
 
 	if (strlen(ptr) > 16)
-		CM108Device = _strdup(ptr);
+	{
+		path_to_open = _strdup(ptr);
+
+		handle = hid_open_path(path_to_open);
+
+		if (handle)
+		{
+			hid_close(handle);
+			CM108Device = _strdup(path_to_open);
+		}
+		else
+		{
+			Debugprintf("Unable to open CM108 device %s", path_to_open);
+		}
+	}
+
 	else
 	{
 		VID = strtol(ptr, &next, 0);
@@ -1311,7 +1333,7 @@ void RadioPTT(int snd_ch, BOOL PTTState)
 		startpttOnTimer();
 		return;
 	}
-	
+
 	if ((PTTMode & PTTHAMLIB))
 	{
 		HAMLIBSetPTT(PTTState);
@@ -1341,27 +1363,39 @@ void RadioPTT(int snd_ch, BOOL PTTState)
 		return;
 	}
 
-	if (DualPTT && modemtoSoundLR[snd_ch] == 1)		// use DTR
+	if ((DualPTT || (PTTMode & PTTRTSDTR)))
+	{
+		if (modemtoSoundLR[snd_ch] == 1)	 // Right Chan so use DTR
+		{
+			if (PTTState)
+				COMSetDTR(hPTTDevice);
+			else
+				COMClearDTR(hPTTDevice);
+		}
+		else
+		{
+			if (PTTState)
+				COMSetDTR(hPTTDevice);
+			else
+				COMClearDTR(hPTTDevice);
+		}
+	}
+	else if ((PTTMode & PTTRTS))
+	{
+		if (PTTState)
+			COMSetRTS(hPTTDevice);
+		else
+			COMClearRTS(hPTTDevice);
+	}
+	else if ((PTTMode & PTTDTR))
 	{
 		if (PTTState)
 			COMSetDTR(hPTTDevice);
 		else
 			COMClearDTR(hPTTDevice);
 	}
-	else
-	{
-		if ((PTTMode & PTTRTS))
-		{
-			if (PTTState)
-				COMSetRTS(hPTTDevice);
-			else
-				COMClearRTS(hPTTDevice);
-		}
-	}
-
-				
+		
 	startpttOnTimer();
-
 }
 
 char ShortDT[] = "HH:MM:SS";

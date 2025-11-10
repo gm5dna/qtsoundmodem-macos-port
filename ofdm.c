@@ -213,7 +213,7 @@ int CorrectRawDataWithRS(UCHAR * bytRawData, UCHAR * bytCorrectedData, int intDa
 UCHAR GetSym8PSK(int intDataPtr, int k, int intCar, UCHAR * bytEncodedBytes, int intDataBytesPerCar);
 int Track1CarPSK(int floatCarFreq, int PSKMode, BOOL QAM, BOOL OFDM, float dblUnfilteredPhase, BOOL blnInit);
 void SendLeaderAndSYNC(UCHAR * bytEncodedBytes, int intLeaderLen);
-void ARDOPFlush();
+void ARDOPFlush(int chan);
 BOOL  CheckCRC16(unsigned char * Data, int Length);
 void CorrectPhaseForTuningOffset(short * intPhase, int intPhaseLength, int intPSKMode);
 BOOL DemodOFDM();
@@ -1522,7 +1522,7 @@ PktLoopBack:		// Reenter here to send rest of variable length packet frame
 		}
 		goto PktLoopBack;		// Reenter to send rest of variable length packet frame
 	}
-	ARDOPFlush();
+	ARDOPFlush(1);
 }
 
 

@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>528</width>
-    <height>721</height>
+    <width>601</width>
+    <height>769</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -19,10 +19,10 @@
   <widget class="QScrollArea" name="scrollArea">
    <property name="geometry">
     <rect>
-     <x>5</x>
-     <y>0</y>
-     <width>513</width>
-     <height>711</height>
+     <x>10</x>
+     <y>-90</y>
+     <width>581</width>
+     <height>751</height>
     </rect>
    </property>
    <property name="verticalScrollBarPolicy">
@@ -39,8 +39,8 @@
      <rect>
       <x>0</x>
       <y>0</y>
-      <width>508</width>
-      <height>706</height>
+      <width>571</width>
+      <height>745</height>
      </rect>
     </property>
     <widget class="QGroupBox" name="groupBox">
@@ -48,7 +48,7 @@
       <rect>
        <x>5</x>
        <y>10</y>
-       <width>541</width>
+       <width>571</width>
        <height>361</height>
       </rect>
      </property>
@@ -283,9 +283,9 @@
       <property name="geometry">
        <rect>
         <x>140</x>
-        <y>201</y>
+        <y>204</y>
         <width>91</width>
-        <height>21</height>
+        <height>17</height>
        </rect>
       </property>
       <property name="toolTip">
@@ -298,9 +298,9 @@
      <widget class="QRadioButton" name="ALSA">
       <property name="geometry">
        <rect>
-        <x>30</x>
+        <x>110</x>
         <y>90</y>
-        <width>71</width>
+        <width>101</width>
         <height>20</height>
        </rect>
       </property>
@@ -311,7 +311,7 @@
      <widget class="QRadioButton" name="OSS">
       <property name="geometry">
        <rect>
-        <x>100</x>
+        <x>216</x>
         <y>90</y>
         <width>61</width>
         <height>20</height>
@@ -324,9 +324,9 @@
      <widget class="QRadioButton" name="PULSE">
       <property name="geometry">
        <rect>
-        <x>168</x>
+        <x>276</x>
         <y>90</y>
-        <width>131</width>
+        <width>111</width>
         <height>20</height>
        </rect>
       </property>
@@ -338,7 +338,7 @@
       <property name="geometry">
        <rect>
         <x>260</x>
-        <y>205</y>
+        <y>204</y>
         <width>191</width>
         <height>17</height>
        </rect>
@@ -353,7 +353,7 @@
      <widget class="QRadioButton" name="UDP">
       <property name="geometry">
        <rect>
-        <x>334</x>
+        <x>380</x>
         <y>90</y>
         <width>51</width>
         <height>20</height>
@@ -366,7 +366,7 @@
      <widget class="QLineEdit" name="UDPPort">
       <property name="geometry">
        <rect>
-        <x>434</x>
+        <x>490</x>
         <y>90</y>
         <width>41</width>
         <height>20</height>
@@ -455,8 +455,8 @@
      <widget class="QLabel" name="label_8">
       <property name="geometry">
        <rect>
-        <x>384</x>
-        <y>92</y>
+        <x>440</x>
+        <y>91</y>
         <width>51</width>
         <height>16</height>
        </rect>
@@ -573,7 +573,7 @@
       <property name="geometry">
        <rect>
         <x>30</x>
-        <y>110</y>
+        <y>111</y>
         <width>421</width>
         <height>21</height>
        </rect>
@@ -595,14 +595,27 @@
        <string>Enable KISS Control and Reporting</string>
       </property>
      </widget>
+     <widget class="QRadioButton" name="QSOUND">
+      <property name="geometry">
+       <rect>
+        <x>14</x>
+        <y>90</y>
+        <width>81</width>
+        <height>20</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>QSound</string>
+      </property>
+     </widget>
     </widget>
     <widget class="QGroupBox" name="Goup">
      <property name="geometry">
       <rect>
        <x>10</x>
        <y>380</y>
-       <width>481</width>
-       <height>133</height>
+       <width>561</width>
+       <height>161</height>
       </rect>
      </property>
      <property name="title">
@@ -684,7 +697,7 @@
       <property name="geometry">
        <rect>
         <x>380</x>
-        <y>74</y>
+        <y>97</y>
         <width>70</width>
         <height>23</height>
        </rect>
@@ -697,7 +710,7 @@
       <property name="geometry">
        <rect>
         <x>160</x>
-        <y>73</y>
+        <y>96</y>
         <width>111</width>
         <height>20</height>
        </rect>
@@ -707,7 +720,7 @@
       <property name="geometry">
        <rect>
         <x>280</x>
-        <y>74</y>
+        <y>97</y>
         <width>31</width>
         <height>16</height>
        </rect>
@@ -720,7 +733,7 @@
       <property name="geometry">
        <rect>
         <x>320</x>
-        <y>74</y>
+        <y>97</y>
         <width>47</width>
         <height>20</height>
        </rect>
@@ -730,7 +743,7 @@
       <property name="geometry">
        <rect>
         <x>20</x>
-        <y>74</y>
+        <y>97</y>
         <width>135</width>
         <height>18</height>
        </rect>
@@ -743,7 +756,7 @@
       <property name="geometry">
        <rect>
         <x>160</x>
-        <y>100</y>
+        <y>122</y>
         <width>81</width>
         <height>20</height>
        </rect>
@@ -756,7 +769,7 @@
       <property name="geometry">
        <rect>
         <x>20</x>
-        <y>98</y>
+        <y>120</y>
         <width>111</width>
         <height>18</height>
        </rect>
@@ -769,7 +782,7 @@
       <property name="geometry">
        <rect>
         <x>320</x>
-        <y>100</y>
+        <y>122</y>
         <width>47</width>
         <height>20</height>
        </rect>
@@ -779,7 +792,7 @@
       <property name="geometry">
        <rect>
         <x>252</x>
-        <y>101</y>
+        <y>123</y>
         <width>63</width>
         <height>18</height>
        </rect>
@@ -792,7 +805,7 @@
       <property name="geometry">
        <rect>
         <x>380</x>
-        <y>99</y>
+        <y>121</y>
         <width>70</width>
         <height>23</height>
        </rect>
@@ -824,14 +837,69 @@
        <string>Mgmt Port</string>
       </property>
      </widget>
+     <widget class="QLabel" name="label_19">
+      <property name="geometry">
+       <rect>
+        <x>21</x>
+        <y>72</y>
+        <width>131</width>
+        <height>18</height>
+       </rect>
+      </property>
+      <property name="toolTip">
+       <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Normally used for WhatPac&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+      </property>
+      <property name="text">
+       <string>REST API Port</string>
+      </property>
+     </widget>
+     <widget class="QLineEdit" name="RHPPort">
+      <property name="geometry">
+       <rect>
+        <x>159</x>
+        <y>72</y>
+        <width>47</width>
+        <height>20</height>
+       </rect>
+      </property>
+      <property name="toolTip">
+       <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Normally used for WhatsPac&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+      </property>
+     </widget>
+     <widget class="QCheckBox" name="RHPEnabled">
+      <property name="geometry">
+       <rect>
+        <x>229</x>
+        <y>70</y>
+        <width>70</width>
+        <height>23</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Enabled</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="label_20">
+      <property name="geometry">
+       <rect>
+        <x>323</x>
+        <y>72</y>
+        <width>191</width>
+        <height>18</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>(RHP PORT is API Port + 1)</string>
+      </property>
+     </widget>
     </widget>
     <widget class="QGroupBox" name="groupBox_3">
      <property name="geometry">
       <rect>
        <x>10</x>
-       <y>520</y>
-       <width>481</width>
-       <height>151</height>
+       <y>550</y>
+       <width>551</width>
+       <height>141</height>
       </rect>
      </property>
      <property name="title">
@@ -978,23 +1046,23 @@
        </rect>
       </property>
      </widget>
-     <widget class="QRadioButton" name="RTSDTR">
+     <widget class="QRadioButton" name="RTS">
       <property name="geometry">
        <rect>
         <x>220</x>
         <y>22</y>
-        <width>86</width>
+        <width>61</width>
         <height>18</height>
        </rect>
       </property>
       <property name="text">
-       <string>RTS/DTR</string>
+       <string>RTS</string>
       </property>
      </widget>
      <widget class="QRadioButton" name="CAT">
       <property name="geometry">
        <rect>
-        <x>315</x>
+        <x>410</x>
         <y>22</y>
         <width>53</width>
         <height>18</height>
@@ -1009,7 +1077,7 @@
        <rect>
         <x>122</x>
         <y>50</y>
-        <width>96</width>
+        <width>400</width>
         <height>20</height>
        </rect>
       </property>
@@ -1027,12 +1095,41 @@
        <string>CM108 VID/PID</string>
       </property>
      </widget>
+     <widget class="QRadioButton" name="RTSDTR">
+      <property name="geometry">
+       <rect>
+        <x>323</x>
+        <y>22</y>
+        <width>81</width>
+        <height>18</height>
+       </rect>
+      </property>
+      <property name="toolTip">
+       <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Use RTS for Left Channel and DTR for right&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+      </property>
+      <property name="text">
+       <string>RTS/DTR</string>
+      </property>
+     </widget>
+     <widget class="QRadioButton" name="DTR">
+      <property name="geometry">
+       <rect>
+        <x>270</x>
+        <y>22</y>
+        <width>51</width>
+        <height>18</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>DTR</string>
+      </property>
+     </widget>
     </widget>
     <widget class="QWidget" name="layoutWidget">
      <property name="geometry">
       <rect>
-       <x>130</x>
-       <y>670</y>
+       <x>180</x>
+       <y>700</y>
        <width>215</width>
        <height>33</height>
       </rect>

@@ -4,8 +4,8 @@
 //	 My port of UZ7HO's Soundmodem
 //
 
-#define VersionString "0.0.0.74 Beta 2"
-#define VersionBytes {0, 0, 0, 74}
+#define VersionString "0.0.0.76"
+#define VersionBytes {0, 0, 0, 76}
 
 //#define LOGTX
 //#define LOGRX
@@ -199,6 +199,14 @@
 
 //.74	Fix filter bandwidths		Nov 24
 //		Fixes for gcc 14			Beta 2
+//		Fix QtSM/QtTerm incompatibility in AGW Mode (Beta 3 March 25)
+//		Explicitly close Constellaton Window (Beta 4 March 25)
+//		Save and resore Constellation Window position (Beta 4 March 25)
+//		Support QSound (Beta 5 April 25). Doesn't seem to work on Linux
+//		Fix option to show mix/snoop devices in Sound Card list. Needs custom .asoundrc (Beta 6 July 25) 
+
+//.75	Fix handling very long CM108 device names on Windows (August 25)
+//		Warn if .ini file can't be written (August 25)
 
 // As far as I can see txtail is only there to make sure all bits get through the tx filter,
 // so it shouldn't really matter what is sent. Code worked in characters, so resolution of txtail
@@ -207,6 +215,8 @@
 //
 //	I'm currently sending reversals with timing resolution of bits (~3 mS at 300 baud)
 
+//.76	Add RHP Interface for WhatsPac (Nov 25)
+//		Add option to use DTR for PTT
 
 
 #include <string.h>
@@ -543,12 +553,13 @@ typedef struct TAX25Port_t
 #define LOGINFO 6
 #define LOGDEBUG 7
 
-#define PTTRTS		1
+#define PTTRTSDTR	1
 #define PTTDTR		2
 #define PTTCAT		4
 #define PTTCM108	8
 #define PTTHAMLIB	16
 #define PTTFLRIG	32
+#define PTTRTS		64
 #define PTTHOST		128				// May be combined with others
 
 // Status flags
@@ -983,7 +994,7 @@ extern BOOL useGPIO;
 extern BOOL gotGPIO;
 extern int VID;
 extern int PID;
-extern char CM108Addr[80];
+extern char CM108Addr[256];
 extern int HamLibPort;
 extern char HamLibHost[];
 extern int FLRigPort;
@@ -1185,9 +1196,9 @@ struct il2p_context_s {
 
 extern int NeedWaterfallHeaders;
 
-#define stringAdd(s1, s2, c) mystringAdd(s1, s2, c, __FILE__, __LINE__)
+#define stringAdd(s1, s2, c) mystringAdd(s1, s2, c, &__FILE__[0], __LINE__)
 
-string * mystringAdd(string * Msg, UCHAR * Chars, int Count, char * FILE, int  LINE);
+string * mystringAdd(string * Msg, UCHAR * Chars, int Count, const char * FILE, int  LINE);
 
 #ifdef __cplusplus
 }

@@ -36,6 +36,12 @@ public slots:
 	void onKISSSocketStateChanged(QAbstractSocket::SocketState socketState);
 	void onMgmtSocketStateChanged(QAbstractSocket::SocketState socketState);
 	void onMgmtReadyRead();
+	void onRHPConnection();
+	void onRHPSocketStateChanged(QAbstractSocket::SocketState socketState);
+	void onRHPReadyRead();
+	void onRHPAPIConnection();
+	void onRHPAPISocketStateChanged(QAbstractSocket::SocketState socketState);
+	void onRHPAPIReadyRead();
 	void onKISSReadyRead();
 	void onAGWSocketStateChanged(QAbstractSocket::SocketState socketState);
 	void onKISSConnection();
@@ -68,6 +74,8 @@ public slots:
 	void readPendingDatagrams();
 	void socketError();
 
+	void sendtoRHP(void * sock, char * Msg, int Len);
+
 private:
 	QTcpServer* tcpServer;
 	QTcpSocket* tcpClient;
@@ -88,6 +96,7 @@ signals:
 	void updateDCD(int, int);
 	void sendtoTrace(char *, int);
 	void sendtoKISS(void *, unsigned char *, int);
+	void sendtoRHP(void *, char *, int);
 	void openSockets();
 	void startCWIDTimer();
 	void setWaterfallImage();

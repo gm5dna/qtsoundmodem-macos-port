@@ -209,7 +209,7 @@ void ClearAllMixedSamples();
 
 void SetFilter(void * Filter());
 
-void AddTrailer();
+
 void CWID(char * strID, short * intSamples, BOOL blnPlay);
 void sendCWID(char * Call, BOOL Play, int Chan);
 UCHAR ComputeTypeParity(UCHAR bytFrameType);
@@ -270,7 +270,6 @@ void TCPAddTagToDataAndSendToHost(UCHAR * Msg, char * Type, int Len);
 void SCSAddTagToDataAndSendToHost(UCHAR * Msg, char * Type, int Len);
 
 void RemoveDataFromQueue(int Len);
-void RemodulateLastFrame();
 
 void GetSemaphore();
 void FreeSemaphore();

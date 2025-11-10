@@ -22,7 +22,7 @@
     <ProjectGuid>{4EDE958E-D0AC-37B4-81F7-78313A262DCD}</ProjectGuid>
     <RootNamespace>QtSoundModem</RootNamespace>
     <Keyword>QtVS_v304</Keyword>
-    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.22621.0</WindowsTargetPlatformVersion>
     <WindowsTargetPlatformMinVersion>10.0.19041.0</WindowsTargetPlatformMinVersion>
     <QtMsBuild Condition="'$(QtMsBuild)'=='' or !Exists('$(QtMsBuild)\qt.targets')">$(MSBuildProjectDirectory)\QtMsBuild</QtMsBuild>
   </PropertyGroup>
@@ -114,15 +114,15 @@
   </PropertyGroup>
   <PropertyGroup Label="QtSettings" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <QtInstall>5.14.2</QtInstall>
-    <QtModules>core;network;gui;widgets;serialport</QtModules>
+    <QtModules>core;network;gui;widgets;serialport;multimedia</QtModules>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="QtSettings">
-    <QtInstall>msvc 2017 5.1464</QtInstall>
-    <QtModules>core;network;gui;widgets;serialport</QtModules>
+    <QtInstall>5.14.2</QtInstall>
+    <QtModules>core;network;gui;widgets</QtModules>
   </PropertyGroup>
   <PropertyGroup Label="QtSettings" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <QtInstall>5.14.2</QtInstall>
-    <QtModules>core;network;gui;widgets;serialport</QtModules>
+    <QtModules>core;network;gui;widgets;serialport;multimedia</QtModules>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="QtSettings">
     <QtInstall>5.14.2</QtInstall>

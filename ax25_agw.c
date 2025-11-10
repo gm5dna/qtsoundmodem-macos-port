@@ -1487,10 +1487,25 @@ void AGW_frame_analiz(AGWUser *  AGW)
 	if (Frame->Port < 0 || Frame->Port > 3)
 		return;
 
-	if (soundChannel[Frame->Port] == 0)
+	// Port Number is relative to defined ports so if we only use Modems A D port 1 will be Modem D (3)
+
+	int realportlist[4] = {-1, -1, -1, -1};
+	int n = 0;
+
+	for (int i = 0; i < 4; i++)
+	{
+		if (soundChannel[i])
+		{
+			realportlist[n++] = i;
+		}
+	}
+
+	if (realportlist[Frame->Port] == -1)
 		return;
 
-	if (Frame->Port > 3)
+	Frame->Port = realportlist[Frame->Port];
+
+	if (soundChannel[Frame->Port] == 0)
 		return;
 
 	switch (Frame->DataKind)

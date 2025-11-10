@@ -2,6 +2,7 @@
 QT += core gui
 QT += network
 QT += serialport
+QT += multimedia
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -45,6 +46,7 @@ SOURCES += ./audio.c \
     ./pktARDOP.c \
      ./BusyDetect.c \
 	 ./DW9600.c \
+	 ./Linux.c \
 	./6pack.cpp
 
 

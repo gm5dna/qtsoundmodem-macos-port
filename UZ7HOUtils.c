@@ -178,7 +178,7 @@ void setlength(string * Msg, int Count)
 	Msg->Length = Count;
 }
 
-string * mystringAdd(string * Msg, UCHAR * Chars, int Count, char * FILE, int  LINE)
+string * mystringAdd(string * Msg, UCHAR * Chars, int Count, const char * FILE, int  LINE)
 {
 	// Add Chars to string 
 

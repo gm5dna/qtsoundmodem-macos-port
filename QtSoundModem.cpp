@@ -48,6 +48,7 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 #include <QScrollBar>
 #include <QFontDialog>
 #include <QFile>
+
 #include "UZ7HOStuff.h"
 
 #include <time.h>
@@ -92,8 +93,8 @@ extern "C" int PlaybackCount;
 extern "C" int CaptureIndex;		// Card number
 extern "C" int PlayBackIndex;
 
-extern "C" char CaptureNames[16][256];
-extern "C" char PlaybackNames[16][256];
+extern "C" char CaptureNames[256][256];
+extern "C" char PlaybackNames[256][256];
 
 extern "C" int SoundMode;
 extern "C" bool onlyMixSnoop;
@@ -173,6 +174,8 @@ bool lockWaterfall = false;
 bool inWaterfall = false;
 
 int MgmtPort = 0;
+int RHPPort = 9000;
+bool RHPServ = 0; 
 
 extern "C" int NeedWaterfallHeaders;
 extern "C" float BinSize;
@@ -261,6 +264,11 @@ uint64_t BusyActivemS[4] = { 0 };
 int AvPTT[4] = { 0 };
 int AvBusy[4] = { 0 };
 
+QList<QAudioDeviceInfo> inputDevices = QAudioDeviceInfo::availableDevices(QAudio::AudioInput);
+QList<QAudioDeviceInfo> outputDevices = QAudioDeviceInfo::availableDevices(QAudio::AudioOutput);
+
+QAudioDeviceInfo inDeviceInfo = QAudioDeviceInfo::defaultInputDevice();
+QAudioDeviceInfo outDeviceInfo = QAudioDeviceInfo::defaultOutputDevice();
 
 extern "C" void WriteDebugLog(char * Mess)
 {
@@ -411,7 +419,7 @@ void QtSoundModem::resizeEvent(QResizeEvent* event)
 		if (Firstwaterfall || Secondwaterfall)
 			ui.Waterfall->setVisible(1);
 
-	if (AGWServ)
+	if (AGWServ || RHPServ)
 	{
 		sessionTable->setVisible(true);
 		sessionHeight = 150;
@@ -437,7 +445,7 @@ void QtSoundModem::resizeEvent(QResizeEvent* event)
 
 	ui.monWindow->setGeometry(QRect(0, monitorTop, Width, monitorHeight));
 
-	if (AGWServ)
+	if (AGWServ || RHPServ)
 		sessionTable->setGeometry(QRect(0, sessionTop, Width, sessionHeight));
 
 	if (waterfallsHeight)
@@ -556,12 +564,6 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	int csize;
 	QFont::Weight weight;
 
-#ifndef WIN32
-	clock_getres(CLOCK_MONOTONIC, &pttclk);
-	printf("CLOCK_MONOTONIC %d, %d\n", pttclk.tv_sec, pttclk.tv_nsec);
-#endif	
-
-
 	ui.setupUi(this);
 
 	mythis = this;
@@ -645,6 +647,8 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 
 	restoreGeometry(mysettings.value("geometry").toByteArray());
 	restoreState(mysettings.value("windowState").toByteArray());
+
+	constellationDialog->restoreGeometry(mysettings.value("constellationgeometry").toByteArray());
 
 	sessionTable = new QTableWidget(ui.centralWidget);
 
@@ -859,6 +863,9 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 
 	connect(serial, &serialThread::request, this, &QtSoundModem::showRequest);
 
+	if (SoundMode == 5)
+		QtSoundInit();
+
 
 }
 
@@ -954,7 +961,6 @@ void QtSoundModem::StatsTimer()
 	// send to any connected Mgmt streams
 
 		char Msg[64];
-		uint64_t ret;
 
 		if (!useKISSControls)
 		{
@@ -980,7 +986,7 @@ void QtSoundModem::StatsTimer()
 				if (MGMT->BPQPort[n])
 				{
 					sprintf(Msg, "STATS %d %d %d\r", MGMT->BPQPort[n], AvPTT[n], AvBusy[n]);
-					ret = socket->write(Msg);
+					socket->write(Msg);
 				}
 			}
 		}
@@ -2037,7 +2043,9 @@ void QtSoundModem::SoundModeChanged(bool State)
 
 	newSnoopMix = Dev->onlyMixSnoop->isChecked();
 
-	if (Dev->UDP->isChecked())
+	if (Dev->QSOUND->isChecked())
+		newSoundMode = 5;
+	else if (Dev->UDP->isChecked())
 		newSoundMode = 3;
 	else if (Dev->PULSE->isChecked())
 		newSoundMode = 2;
@@ -2070,6 +2078,8 @@ void QtSoundModem::PTTPortChanged(int Selected)
 
 	Dev->RTSDTR->setVisible(false);
 	Dev->CAT->setVisible(false);
+	Dev->RTS->setVisible(false);
+	Dev->DTR->setVisible(false);
 
 	Dev->PTTOnLab->setVisible(false);
 	Dev->PTTOn->setVisible(false);
@@ -2136,6 +2146,8 @@ void QtSoundModem::PTTPortChanged(int Selected)
 	else
 	{
 		Dev->RTSDTR->setVisible(true);
+		Dev->RTS->setVisible(true);
+		Dev->DTR->setVisible(true);
 		Dev->CAT->setVisible(true);
 
 		if (Dev->CAT->isChecked())
@@ -2212,12 +2224,23 @@ void QtSoundModem::doDevices()
 	oldSoundMode = SoundMode;
 	oldSnoopMix = newSnoopMix = onlyMixSnoop;
 
+	if (SoundMode == 5)
+	{
+		Debugprintf("CaptureCount %d PlaybackCount %d", CaptureCount, PlaybackCount);
+//		GetAudioDevices();
+		Dev->QSOUND->setChecked(1);
+	}
+
 #ifdef WIN32
 	Dev->ALSA->setText("WaveOut");
 	Dev->OSS->setVisible(0);
 	Dev->PULSE->setVisible(0);
 	Dev->onlyMixSnoop->setVisible(0);
-	Dev->ALSA->setChecked(1);
+
+	if (SoundMode == 0)
+		Dev->ALSA->setChecked(1);
+	else if (SoundMode == 2)
+		Dev->UDP->setChecked(1);
 #else
 	if (SoundMode == 0)
 	{
@@ -2295,6 +2318,11 @@ void QtSoundModem::doDevices()
 	Dev->AGWPort->setText(valChar);
 	Dev->AGWEnabled->setChecked(AGWServ);
 
+	sprintf(valChar, "%d", RHPPort);
+	Dev->RHPPort->setText(valChar);
+	Dev->RHPEnabled->setChecked(RHPServ);
+
+
 	Dev->MgmtPort->setText(QString::number(MgmtPort));
 
 	// If we are using a user specifed device add it
@@ -2347,6 +2375,10 @@ void QtSoundModem::doDevices()
 
 	if (PTTMode == PTTCAT)
 		Dev->CAT->setChecked(true);
+	else if (PTTMode == PTTRTS)
+		Dev->RTS->setChecked(true);
+	else if (PTTMode == PTTDTR)
+		Dev->DTR->setChecked(true); 
 	else
 		Dev->RTSDTR->setChecked(true);
 
@@ -2543,12 +2575,16 @@ void QtSoundModem::deviceaccept()
 	raduga = Dev->colourWaterfall->isChecked();
 	AGWServ = Dev->AGWEnabled->isChecked();
 	KISSServ = Dev->KISSEnabled->isChecked();
+	RHPServ = Dev->RHPEnabled->isChecked();
 
 	Q = Dev->KISSPort->text();
 	KISSPort = Q.toInt();
 
 	Q = Dev->AGWPort->text();
 	AGWPort = Q.toInt();
+
+	Q = Dev->RHPPort->text();
+	RHPPort = Q.toInt();
 
 	Q = Dev->MgmtPort->text();
 	MgmtPort = Q.toInt();
@@ -2582,10 +2618,14 @@ void QtSoundModem::deviceaccept()
 	darkTheme = Dev->darkTheme->isChecked();
 	mysetstyle();
 
-	if (Dev->CAT->isChecked())
-		PTTMode = PTTCAT;
-	else
+	if (Dev->RTS->isChecked())
 		PTTMode = PTTRTS;
+	else  if (Dev->DTR->isChecked())
+		PTTMode = PTTDTR;
+	else if (Dev->CAT->isChecked())
+		PTTMode = PTTCAT;
+	else if (Dev->RTSDTR->isChecked())
+		PTTMode = PTTRTSDTR;
 
 	Q = Dev->PTTOn->text();
 	strcpy(PTTOnString, Q.toString().toUtf8());
@@ -2680,7 +2720,20 @@ void QtSoundModem::deviceaccept()
 
 	if (cardChanged)
 	{
-		InitSound(1);
+		if (SoundMode == 5)
+		{
+			closeQSound();
+
+			inDeviceInfo = inputDevices[CaptureIndex];
+			outDeviceInfo = outputDevices[PlayBackIndex];
+			initializeAudioOut(outDeviceInfo);
+			initializeAudioIn(inDeviceInfo);
+
+			QtSoundInit();
+		}
+
+		else
+			InitSound(1);
 	}
 
 	// Reset title and tooltip in case ports changed 
@@ -2784,6 +2837,9 @@ void QtSoundModem::doCalibrate()
 	Ui_calDialog Calibrate;
 	{
 		QDialog UI;
+		QRect MainRect = geometry();
+		QRect Rect = {MainRect.x() + 80, MainRect.y() + 150, 270, 453};
+
 		Calibrate.setupUi(&UI);
 
 		connect(Calibrate.Low_A, SIGNAL(released()), this, SLOT(clickedSlot()));
@@ -2817,6 +2873,8 @@ void QtSoundModem::doCalibrate()
 
 //		connect(Calibrate.High_A, SIGNAL(released()), this, SLOT(handleButton(1, 2)));
 */
+		UI.setGeometry(Rect);
+		UI.resize(270, 453);
 		UI.exec();
 	}
 }
@@ -3446,6 +3504,9 @@ void QtSoundModem::closeEvent(QCloseEvent *event)
 	mysettings.setValue("geometry", QWidget::saveGeometry());
 	mysettings.setValue("windowState", saveState());
 
+	mysettings.setValue("Constellationgeometry", constellationDialog->saveGeometry());
+	constellationDialog->close();
+
 	Closing = TRUE;
 	qDebug() << "Closing";
 
@@ -3462,6 +3523,9 @@ QtSoundModem::~QtSoundModem()
 	QSettings mysettings("QtSoundModem.ini", QSettings::IniFormat);
 	mysettings.setValue("geometry", saveGeometry());
 	mysettings.setValue("windowState", saveState());
+
+	mysettings.setValue("Constellationgeometry", constellationDialog->saveGeometry());
+	constellationDialog->close();
 	
 	saveSettings();	
 	Closing = TRUE;
@@ -3831,13 +3895,12 @@ void QtSoundModem::StartWatchdog()
  void serialThread::run()
  {
 	 QSerialPort serial;
-	 bool currentPortNameChanged = false;
 
 	 mutex.lock();
 	 QString currentPortName;
-	 if (currentPortName != portName) {
+	 if (currentPortName != portName)
+	 {
 		 currentPortName = portName;
-		 currentPortNameChanged = true;
 	 }
 
 	 int currentWaitTimeout = waitTimeout;
@@ -3886,4 +3949,364 @@ void QtSoundModem::StartWatchdog()
 	 Process6PackData((unsigned char *)Data.data(), Data.length());
  }
 
- 
+ // QSound based Soundcard interface
+
+
+ static QIODevice * out;
+ static QIODevice * in;
+
+ QAudioOutput * m_audioOutput;
+ QAudioInput * m_audioInput;
+
+#ifndef WIN32
+ extern "C" int stricmp(char * pStr1, char *pStr2);
+#endif
+
+ void QtSoundModem::GetAudioDevices()
+ {
+	 CaptureCount = 0;
+	 Debugprintf("Capture Devices:");
+
+	 for (int i = 0; i < inputDevices.count(); ++i)
+	 {
+		 QString deviceName = inputDevices[i].deviceName();
+
+		 if (strstr(deviceName.toUtf8(), "surround") == 0)
+		 {
+			 strcpy(CaptureNames[CaptureCount], deviceName.toUtf8());
+
+			 if (stricmp(&CaptureNames[CaptureCount++][0], CaptureDevice) == 0)
+			 {
+				if (inDeviceInfo == QAudioDeviceInfo::defaultInputDevice())
+					 inDeviceInfo = inputDevices[i];
+
+				qDebug() << "* " << deviceName;
+			 }
+			 else
+				 qDebug() << "  " << deviceName;
+		 }
+	 }
+
+	 PlaybackCount = 0;
+	 Debugprintf("Playback Devices:");
+
+	 for (int i = 0; i < outputDevices.count(); ++i)
+	 {
+		 QString deviceName = outputDevices[i].deviceName();
+
+		 if (strstr(deviceName.toUtf8(), "surround") == 0)
+		 {
+			 strcpy(PlaybackNames[PlaybackCount], deviceName.toUtf8());
+
+			 if (stricmp(&PlaybackNames[PlaybackCount++][0], PlaybackDevice) == 0)
+			 {
+				 if (outDeviceInfo == QAudioDeviceInfo::defaultOutputDevice())
+					 outDeviceInfo = outputDevices[i];
+				 qDebug() << "* " << deviceName;
+			 }
+
+			 else
+				 qDebug() << "  " << deviceName;
+		 }
+	 }
+
+	 Debugprintf("CaptureCount %d PlaybackCount %d", CaptureCount, PlaybackCount);
+ }
+
+ void QtSoundModem::audioInStateChanged(QAudio::State newState)
+ {
+	 switch (newState)
+	 {
+	 case QAudio::StoppedState:
+		 if (m_audioInput->error() != QAudio::NoError) 
+		 {
+			 // Error handling
+		 }
+		 else {
+			 // Finished recording
+		 }
+		 break;
+
+	 case QAudio::ActiveState:
+
+		 // Started recording - read from IO device
+
+		 break;
+
+	 case QAudio::IdleState:
+
+		 // Started recording - read from IO device
+		 break;
+
+	 default:
+		 // ... other cases as appropriate
+		 break;
+	 }
+ }
+
+ void QtSoundModem::audioOutStateChanged(QAudio::State newState)
+ {
+	 switch (newState)
+	 {
+	 case QAudio::StoppedState:
+		 if (m_audioInput->error() != QAudio::NoError)
+		 {
+			 // Error handling
+		 }
+		 else 
+		 {
+			 // Finished recording
+		 }
+		 break;
+
+	 case QAudio::ActiveState:
+
+		 break;
+
+	 case QAudio::IdleState:
+
+		 // Used to see when TX is complete so can drop PTT
+
+			 // I think we should turn round the link here. I dont see the point in
+	 // waiting for MainPoll
+
+		 if (SoundIsPlaying)
+		 {
+			SoundIsPlaying = 0;
+		 }
+		 break;
+
+
+	 default:
+		 // ... other cases as appropriate
+		 break;
+	 }
+ }
+
+ extern "C" unsigned short * DMABuffer;
+
+ unsigned short QtDMABuffer[4096];
+
+ extern "C" void QtSoundModem::QtSoundInit()
+ {
+	 GetAudioDevices();
+
+	 initializeAudioOut(outDeviceInfo);
+	 initializeAudioIn(inDeviceInfo);
+
+	 DMABuffer = QtDMABuffer;
+
+ }
+
+
+
+
+ void QtSoundModem::initializeAudioIn(const QAudioDeviceInfo &deviceInfo)
+ {
+	 QAudioFormat format;
+	 format.setSampleRate(12000);
+	 format.setChannelCount(2);
+	 format.setSampleSize(16);
+	 format.setCodec("audio/pcm");
+	 format.setByteOrder(QAudioFormat::LittleEndian);
+	 format.setSampleType(QAudioFormat::SignedInt);
+
+	 qDebug() << "Opening Input Device " << deviceInfo.deviceName();
+
+	 if (!deviceInfo.isFormatSupported(format))
+	 {
+		 QList<int> sampleRatez = deviceInfo.supportedSampleRates();
+		 qWarning() << "Default format not supported - trying to use nearest";
+		 format = deviceInfo.nearestFormat(format);
+	 }
+
+	 qDebug() << "Sample Rate" << format.sampleRate();
+
+	 m_audioInput = new QAudioInput(deviceInfo, format, this);
+	 connect(m_audioInput, SIGNAL(stateChanged(QAudio::State)), this, SLOT(audioInStateChanged(QAudio::State)));
+
+	 m_audioInput->setBufferSize(16384);
+	 int n = m_audioInput->bufferSize();
+	 in = m_audioInput->start();
+ }
+ void QtSoundModem::initializeAudioOut(const QAudioDeviceInfo &deviceInfo)
+ {
+	 QAudioFormat format;
+	 format.setSampleRate(12000);
+	 format.setChannelCount(2);
+	 format.setSampleSize(16);
+	 format.setCodec("audio/pcm");
+	 format.setByteOrder(QAudioFormat::LittleEndian);
+	 format.setSampleType(QAudioFormat::SignedInt);
+
+	 qDebug() << "Opening Output Device " << deviceInfo.deviceName();
+
+	 if (!deviceInfo.isFormatSupported(format))
+	 {
+		 QList<int> sampleRatez = deviceInfo.supportedSampleRates();
+
+		 qWarning() << "Default format not supported - trying to use nearest";
+		 format = deviceInfo.nearestFormat(format);
+	 }
+
+	 qDebug() << "Sample Rate" << format.sampleRate();
+
+	 m_audioOutput = new QAudioOutput(deviceInfo, format, this);
+	 connect(m_audioOutput, SIGNAL(stateChanged(QAudio::State)), this, SLOT(audioOutStateChanged(QAudio::State)));
+
+	 m_audioOutput->setBufferSize(16384);
+	 int n = m_audioOutput->bufferSize();
+	 Debugprintf("Output Buffer Size %d", n);
+
+	 out = m_audioOutput->start();
+ }
+
+ void QtSoundModem::closeQSound()
+ {
+	 m_audioInput->stop();
+	 m_audioOutput->stop();
+ }
+
+ extern "C" void txSleep(int mS);
+
+ extern "C" unsigned short * sendSamplestoQSound(unsigned short * buf, int n)
+ {
+
+	 int in = 0;
+	 int space = m_audioOutput->bytesFree();
+	 int size = m_audioOutput->periodSize();
+	 int chunks = space / size;
+
+	 Debugprintf("ToSend %d Space %d Period Size %d chunks %d ", n * 4, space, size, chunks);
+
+	 // We are passed Stereo 16 bit samples. I think n is number of samples so send n x 4 
+
+	 // On Linux, at least with my systems,
+
+	 space = m_audioOutput->bytesFree() / 4;
+
+	 while (space < n)
+	 {
+		 txSleep(10);
+		 space = m_audioOutput->bytesFree() / 4;
+		 Debugprintf("Space %d", space);
+	 }
+
+	 int x = out->write((char *)buf, n * 4);
+
+	 space = m_audioOutput->bytesFree();
+	 size = m_audioOutput->periodSize();
+	 chunks = space / size;
+
+	 Debugprintf("Space %d Period Size %d chunks %d ", space, size, chunks);
+
+	 if (x != n * 4)
+		 Debugprintf("%d %d", x, space);
+
+	 return buf;
+ }
+
+
+extern "C" void ProcessNewSamples(short * Samples, int nSamples);
+
+static int minL = 0, maxL = 0, minR = 0, maxR = 0, lastlevelGUI = 0, lastlevelreport = 0;
+
+
+char Buffer[16384];
+
+int BufferLen = 0;
+
+extern "C" void PollQSound()
+{
+	// Process any captured samples
+	// Ideally call at least every 100 mS, more than 200 will loose data
+
+	// For level display we want a fairly rapid level average but only want to report 
+	// to log every 10 secs or so
+
+	if (!m_audioInput)
+		return;
+
+	int xx = m_audioInput->state();
+
+	if (in == nullptr)
+		return;
+
+	int len = 0;
+
+	int size = m_audioOutput->periodSize();
+
+	// I think we have to read periodsize, but modem expects 512 byte blocks so have to do partial reads
+
+	len = m_audioInput->bytesReady();
+
+	int x = in->read(&Buffer[BufferLen], size);
+
+	if (len > 16384)
+		return;
+
+	BufferLen += x;
+
+	while (BufferLen > 2048)
+	{
+
+		// ALthough we said samples were signed ints, they appear to be returned as signed shorts, so samples available is half bytesReady()
+
+		// Process 512 samples, 2 bytes each
+
+		short * ptr;
+		int i;
+
+		ptr = (short *)Buffer;
+
+		for (i = 0; i < ReceiveSize; i++)
+		{
+			if (*(ptr) < minL)
+				minL = *ptr;
+			else if (*(ptr) > maxL)
+				maxL = *ptr;
+
+			ptr++;
+
+			if (*(ptr) < minR)
+				minR = *ptr;
+			else if (*(ptr) > maxR)
+				maxR = *ptr;
+			ptr++;
+		}
+
+		CurrentLevel = ((maxL - minL) * 75) / 32768;	// Scale to 150 max
+		CurrentLevelR = ((maxR - minR) * 75) / 32768;	// Scale to 150 max
+
+		if ((Now - lastlevelGUI) > 2000)	// 2 Secs
+		{
+			//			if (WaterfallActive == 0 && SpectrumActive == 0)				// Don't need to send as included in Waterfall Line
+			//				SendtoGUI('L', &CurrentLevel, 1);	// Signal Level
+
+			lastlevelGUI = Now;
+
+			if ((Now - lastlevelreport) > 60000)	// 60 Secs
+			{
+				lastlevelreport = Now;
+
+				if (UsingBothChannels)
+					Debugprintf("Input peaks L= %d, %d, R= %d, %d", minL, maxL, minR, maxR);
+				else
+					Debugprintf("Input peaks = %d, %d", minL, maxL);
+			}
+			minL = maxL = minR = maxR = 0;
+		}
+
+		//		debugprintf(LOGDEBUG, "Process %d %d", inIndex, inheader[inIndex].dwBytesRecorded/2);
+		//		if (Capturing && Loopback == FALSE)
+
+		ProcessNewSamples((short *)Buffer, 512);
+
+		BufferLen -= 2048;
+
+		memmove(Buffer, Buffer + 2048, BufferLen);
+	}
+}
+
+
+

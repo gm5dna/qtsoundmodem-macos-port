@@ -29,8 +29,6 @@ extern short Dummy;
 int intSoftClipCnt = 0;
 BOOL SendingHeader200 = 0;		// Set when sending header in 200 Hz Modes
 
-void ARDOPFlush();
-
 int intBW;			// Requested connect speed
 int intSessionBW;	// Negotiated speed
 UCHAR bytLastReceivedDataFrameType;

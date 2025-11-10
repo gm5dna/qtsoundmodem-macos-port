@@ -22,6 +22,7 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 
 #include <QSettings>
 #include <QDialog>
+#include <QMessageBox>
 
 #include "UZ7HOStuff.h"
 
@@ -73,6 +74,8 @@ extern int SixPackEnable;
 extern int MgmtPort;
 extern QFont Font;
 
+extern int RHPPort;
+extern bool RHPServ;
 
 QSettings* settings = new QSettings("QtSoundModem.ini", QSettings::IniFormat);
 
@@ -140,6 +143,19 @@ void getSettings()
 	QSettings* settings = new QSettings("QtSoundModem.ini", QSettings::IniFormat);
 	settings->sync();
 
+	if (settings->status() == QSettings::AccessError)
+	{
+		QMessageBox msgBox;
+
+		msgBox.setText("Failed to access settings\n"
+			"Could be access permissions of QtSoundmodem.ini or Disk full");
+
+		msgBox.setStandardButtons(QMessageBox::Ok);
+
+		msgBox.exec();
+
+	}
+
 	PSKRect = settings->value("PSKWindow").toRect();
 
 	SoundMode = settings->value("Init/SoundMode", 0).toInt();
@@ -155,7 +171,7 @@ void getSettings()
 	txLatency = settings->value("Init/txLatency", 50).toInt();
 
 
-	onlyMixSnoop = settings->value("Init/onlyMixSnoop", 0).toInt();
+	onlyMixSnoop = settings->value("Init/onlyMixSnoop", 0).toBool();
 
 	strcpy(CaptureDevice, settings->value("Init/SndRXDeviceName", "hw:1,0").toString().toUtf8());
 	strcpy(PlaybackDevice, settings->value("Init/SndTXDeviceName", "hw:1,0").toString().toUtf8());
@@ -229,6 +245,10 @@ void getSettings()
 	KISSServ = settings->value("KISS/Server", FALSE).toBool();
 	KISSPort = settings->value("KISS/Port", 8105).toInt();
 	MgmtPort = settings->value("MGMT/Port", 0).toInt();
+
+	RHPServ = settings->value("RHP/Server", FALSE).toBool();
+	RHPPort = settings->value("RHP/Port", 9000).toInt();
+
 
 	SixPackEnable = settings->value("SixPack/Enable", FALSE).toBool();
 	SixPackPort = settings->value("SixPack/Port", 0).toInt();
@@ -472,6 +492,8 @@ void saveSettings()
 	settings->setValue("KISS/Port", KISSPort);
 	settings->setValue("MGMT/Port", MgmtPort);
 
+	settings->setValue("RHP/Server", RHPServ);
+	settings->setValue("RHP/Port", RHPPort);
 
 	settings->setValue("SixPack/Enable", SixPackEnable);
 	settings->setValue("SixPack/Port", SixPackPort);
@@ -516,6 +538,19 @@ void saveSettings()
 	saveAX25Params(3);
 
 	settings->sync();
+
+	if (settings->status() == QSettings::AccessError)
+	{
+		QMessageBox msgBox;
+
+		msgBox.setText("Failed to access settings\n"
+			"Could be access permissions of QtSoundmodem.ini or disk full");
+
+		msgBox.setStandardButtons(QMessageBox::Ok);
+
+		msgBox.exec();
+
+	}
 
 	delete(settings);
 }

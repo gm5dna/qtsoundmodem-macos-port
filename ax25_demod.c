@@ -330,11 +330,11 @@ float get_persist(int snd_ch, int persist)
 {
 	single x, x1 ;
 
-	x = 256 / persist;
+	x = 256.0 / persist;
 
-	x1 = round(x*x) * rand() / RAND_MAX;
+	x1 = roundf(x*x) * rand() / RAND_MAX;
 
-	return x1 * 0.5 * slottime[snd_ch];
+	return x1 * 0.5f * slottime[snd_ch];
 }
 
 void chk_dcd1(int snd_ch, int buf_size)
@@ -347,8 +347,6 @@ void chk_dcd1(int snd_ch, int buf_size)
 	single  tick;
 	word  active;
 	boolean  ind_dcd;
-	boolean  dcd_sync;
-	longint  n;
 
 	TAX25Port * AX25Sess;
 
@@ -526,7 +524,6 @@ string * get_pkt_data(string * stream)
 	string * s = newString();
 
 	Byte  bit;
-	Byte  raw_bit;
 	Byte  sym;
 
 	bits_cnt = 0;
@@ -682,14 +679,12 @@ var
 
 void make_rx_frame(int snd_ch, int rcvr_nr, int emph, Byte last_nrzi_bit, string * raw_data, string * raw_data1)
 {
-	int swap_i, swap_k;
 	string * data;
 	string * nrzi_data;
 	longword raw_len;
 	word len, crc1, crc2;
 	int arq_mem = 0;
-	string s;
-	int i, k, n;
+	int i;
 	unsigned char * raw;
 	unsigned char * raw1;
 	char Mode[16] = "";
@@ -980,10 +975,6 @@ procedure add_to_ARQ_FEC(buf: TStringList; data: string);
 }
 */
 
-void make_rx_frame_FEC(int snd_ch, int rcvr_nr, string * data, string * fec_data, word nErr)
-{
-}
-
 /*var
   len,crc1,crc2: word;
   s: string;
@@ -1050,7 +1041,7 @@ void  Mux3(int snd_ch, int rcvr_nr, int emph, float * src1, float * core, float 
 
 	int i;
 	float x;
-	float acc1, acc2, acc3, mag;
+	float acc1, acc2, mag;
 	int tap4;
 	int tap_cnt;
 	unsigned int ii, kk;
@@ -1137,7 +1128,7 @@ void  Mux3(int snd_ch, int rcvr_nr, int emph, float * src1, float * core, float 
 
 		mag = sqrtf(prevI[tap_cnt] * prevI[tap_cnt] + prevQ[tap_cnt] * prevQ[tap_cnt]);
 
-		AGC = 0.5 * AGC + 0.5  *mag;
+		AGC = 0.5f * AGC + 0.5f  *mag;
 
 		if (AGC > 1)
 		{
@@ -1244,9 +1235,9 @@ void Mux3_PSK(int snd_ch, int rcvr_nr, int emph, float * src1, float * core, flo
 
 	int i;
 	float x;
-	float acc1, acc2, mag;
+	float acc1, acc2;
 	int tap4;
-	int prev_cnt, tap_cnt;
+	int tap_cnt;
 
 	float Preemphasis6, Preemphasis12, MUX3_osc;
 
@@ -2073,7 +2064,7 @@ void  make_rx_frame_FX25(int snd_ch, int rcvr_nr, int emph, string * data)
 	
 string * decode_FX25_data(TFX25 fx25)
 {
-	integer eras_pos = 0, i, j, len, rs_res;
+	integer eras_pos = 0, i, len, rs_res;
 	Byte a, k;
 	Byte bit, byte_rx, bit_stuff_cnt, bit_cnt = 0, frame_status, bit_stream;
 
@@ -2081,7 +2072,6 @@ string * decode_FX25_data(TFX25 fx25)
 
 	int done;
 	Byte rs_block[256];
-	int RSOK;
 
 	bit_stream = 0;
 	len = fx25.size - fx25.rs_size;
