@@ -35,3 +35,33 @@ add_custom_command(TARGET QtSoundModem POST_BUILD
     COMMENT "macdeployqt: bundling Qt frameworks into QtSoundModem.app"
     VERBATIM
 )
+
+# macdeployqt only handles Qt frameworks. The build also depends on
+# Homebrew's fftw3f, which would otherwise leave the bundle linked to
+# /opt/homebrew/opt/fftw/... and break the moment the .app is moved off
+# this machine (or Homebrew is upgraded). Embed the real dylib into
+# Contents/Frameworks/ and rewrite the executable's load command to
+# point at @rpath. macdeployqt has already set the rpath to
+# @executable_path/../Frameworks for Qt, which we reuse.
+get_filename_component(FFTW3F_REAL "${FFTW3F_LIBRARY}" REALPATH)
+get_filename_component(FFTW3F_NAME "${FFTW3F_REAL}" NAME)
+
+add_custom_command(TARGET QtSoundModem POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E make_directory
+            "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Frameworks"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${FFTW3F_REAL}"
+            "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Frameworks/${FFTW3F_NAME}"
+    COMMAND chmod u+w
+            "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Frameworks/${FFTW3F_NAME}"
+    COMMAND install_name_tool -id
+            "@rpath/${FFTW3F_NAME}"
+            "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Frameworks/${FFTW3F_NAME}"
+    COMMAND /bin/bash -c
+            "exe='$<TARGET_FILE:QtSoundModem>'; \
+             for dep in $(otool -L \"$exe\" | awk 'NR>1 {print $1}' | grep '/libfftw3f'); do \
+                 install_name_tool -change \"$dep\" '@rpath/${FFTW3F_NAME}' \"$exe\"; \
+             done"
+    COMMENT "Embedding ${FFTW3F_NAME} into QtSoundModem.app/Contents/Frameworks"
+    VERBATIM
+)
