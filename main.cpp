@@ -92,6 +92,17 @@ int main(int argc, char *argv[])
 
 
 
+#if defined(Q_OS_MACOS)
+	// Set org/app metadata BEFORE QApplication construction. Qt-recommended
+	// ordering: several Qt subsystems (QSettings, QStandardPaths,
+	// QFileSystemEngine cache) consult QCoreApplication::organizationName/
+	// applicationName at first access and may cache. Setting before
+	// construction is the safe canonical order.
+	QCoreApplication::setOrganizationName("gm5dna");
+	QCoreApplication::setOrganizationDomain("gm5dna.com");
+	QCoreApplication::setApplicationName("QtSoundModem");
+#endif
+
 	if (nonGUIMode)
 		a = new QCoreApplication(argc, argv);
 	else
@@ -101,12 +112,8 @@ int main(int argc, char *argv[])
 	// Config / Save Settings open "QtSoundModem.ini" via a *relative*
 	// path. Linux/Windows users launch from the install dir so the
 	// cwd happens to be writable; a Finder-launched .app has cwd=/
-	// and QSettings::AccessError fires on first save. Set org/app
-	// metadata so QStandardPaths gives a uniquely-named subdir, then
-	// chdir into it before any QSettings call.
-	QCoreApplication::setOrganizationName("gm5dna");
-	QCoreApplication::setOrganizationDomain("gm5dna.com");
-	QCoreApplication::setApplicationName("QtSoundModem");
+	// and QSettings::AccessError fires on first save. chdir into the
+	// AppDataLocation subdir before any QSettings call.
 	QString macConfigDir = QStandardPaths::writableLocation(
 		QStandardPaths::AppDataLocation);
 	if (!macConfigDir.isEmpty())
