@@ -4596,30 +4596,21 @@ extern "C" void PollQSound()
 	const int inChunkBytes = outChunkBytes * decim;
 
 	int size = kAudioPeriodBytes * decim;
-	int len = m_audioInput->bytesAvailable();
 
 	if (BufferLen + size > (int)sizeof(Buffer))
 		size = (int)sizeof(Buffer) - BufferLen;
 
 	int x = in->read(&Buffer[BufferLen], size);
 
-#if defined(Q_OS_MACOS)
-	if (g_dumpInputPath && x > 0)
-	{
-		dumpInputOpen();
-		dumpInputWrite(&Buffer[BufferLen], x);
-	}
-#endif
-
-	if (len > 16384 * decim)
-	{
-		// Backlog — let the buffer drain on subsequent calls. Accept
-		// the bytes we just read so they're not lost.
-		BufferLen += x;
-		return;
-	}
-
 	BufferLen += x;
+
+	// Earlier code had an early-return when bytesAvailable() exceeded
+	// 16384*decim, intended as a "let it drain on subsequent calls"
+	// throttle. It was self-defeating: we are the consumer, so Qt's
+	// backlog only shrinks when we drain locally. Returning without
+	// draining left Buffer to fill until size→0, then we silently
+	// stopped reading altogether. The drain loop below is bounded
+	// (one chunk per iteration, finite Buffer) and cheap.
 
 	short decimated[1024];  // 512 stereo frames
 
@@ -4671,6 +4662,18 @@ extern "C" void PollQSound()
 		}
 
 		ProcessNewSamples(decimated, 512);
+
+#if defined(Q_OS_MACOS)
+		// Dump POST-decimation, so the 12 kHz stereo Int16 WAV header
+		// in dumpInputOpen() is honest. Writing pre-decimation bytes
+		// at native 24/48 kHz under a 12 kHz header would mislabel the
+		// file by 2-4× and break --decode-wav playback.
+		if (g_dumpInputPath)
+		{
+			dumpInputOpen();
+			dumpInputWrite(decimated, sizeof(decimated));
+		}
+#endif
 
 		BufferLen -= inChunkBytes;
 		memmove(Buffer, Buffer + inChunkBytes, BufferLen);
