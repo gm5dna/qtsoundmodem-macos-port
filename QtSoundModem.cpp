@@ -2520,10 +2520,13 @@ void QtSoundModem::deviceaccept()
 
 	}
 
-	if (strcmp(CaptureDevice, Q.toString().toUtf8()) != 0)
 	{
-		strcpy(CaptureDevice, Q.toString().toUtf8());
-		cardChanged = 1;
+		QByteArray captureUtf8 = Q.toString().toUtf8();
+		if (strcmp(CaptureDevice, captureUtf8.constData()) != 0)
+		{
+			qstrncpy(CaptureDevice, captureUtf8.constData(), sizeof(CaptureDevice));
+			cardChanged = 1;
+		}
 	}
 
 	if (onlyMixSnoop != Dev->onlyMixSnoop->isChecked())
@@ -2536,10 +2539,13 @@ void QtSoundModem::deviceaccept()
 
 	Q = Dev->outputDevice->currentText();
 
-	if (strcmp(PlaybackDevice, Q.toString().toUtf8()) != 0)
 	{
-		strcpy(PlaybackDevice, Q.toString().toUtf8());
-		cardChanged = 1;
+		QByteArray playbackUtf8 = Q.toString().toUtf8();
+		if (strcmp(PlaybackDevice, playbackUtf8.constData()) != 0)
+		{
+			qstrncpy(PlaybackDevice, playbackUtf8.constData(), sizeof(PlaybackDevice));
+			cardChanged = 1;
+		}
 	}
 
 	PlayBackIndex = Dev->outputDevice->currentIndex();
@@ -3986,7 +3992,8 @@ void QtSoundModem::StartWatchdog()
 
 		 if (strstr(deviceName.toUtf8(), "surround") == 0)
 		 {
-			 strcpy(CaptureNames[CaptureCount], deviceName.toUtf8());
+			 qstrncpy(CaptureNames[CaptureCount], deviceName.toUtf8().constData(),
+				 sizeof(CaptureNames[CaptureCount]));
 
 			 // TODO(macos): description() is not unique on macOS for
 			 // duplicate identical USB devices. Migrate persistence to
@@ -4012,7 +4019,8 @@ void QtSoundModem::StartWatchdog()
 
 		 if (strstr(deviceName.toUtf8(), "surround") == 0)
 		 {
-			 strcpy(PlaybackNames[PlaybackCount], deviceName.toUtf8());
+			 qstrncpy(PlaybackNames[PlaybackCount], deviceName.toUtf8().constData(),
+				 sizeof(PlaybackNames[PlaybackCount]));
 
 			 // TODO(macos): see CaptureNames matcher comment above.
 			 if (stricmp(&PlaybackNames[PlaybackCount++][0], PlaybackDevice) == 0)

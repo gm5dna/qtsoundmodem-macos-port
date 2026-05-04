@@ -78,8 +78,8 @@ int stdinMode = 0;
 BOOL Loopback = FALSE;
 //BOOL Loopback = TRUE;
 
-char CaptureDevice[80] = "real"; //"2";
-char PlaybackDevice[80] = "real"; //"1";
+char CaptureDevice[256] = "real"; //"2";
+char PlaybackDevice[256] = "real"; //"1";
 
 int CaptureIndex = -1;		// Card number
 PlayBackIndex = -1;

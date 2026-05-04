@@ -191,25 +191,25 @@ void getSettings()
 #else
 	const char * defaultDeviceName = "hw:1,0";
 #endif
-	strcpy(CaptureDevice, settings->value("Init/SndRXDeviceName", defaultDeviceName).toString().toUtf8());
-	strcpy(PlaybackDevice, settings->value("Init/SndTXDeviceName", defaultDeviceName).toString().toUtf8());
+	// Bounded copies. INI values are user-editable, so even with
+	// 256-byte storage a hand-edited 300-byte name would otherwise
+	// overflow plain strcpy.
+	qstrncpy(CaptureDevice,
+		settings->value("Init/SndRXDeviceName", defaultDeviceName).toString().toUtf8().constData(),
+		sizeof(CaptureDevice));
+	qstrncpy(PlaybackDevice,
+		settings->value("Init/SndTXDeviceName", defaultDeviceName).toString().toUtf8().constData(),
+		sizeof(PlaybackDevice));
 
 #if defined(Q_OS_MACOS)
-	// CoreAudio descriptions can exceed 79 UTF-8 bytes (e.g. some USB
-	// audio interfaces have long manufacturer-prefixed names); bound
-	// the copy and zero-terminate.
 	if (CaptureDevice[0] == '\0')
-	{
-		QByteArray defaultIn = QMediaDevices::defaultAudioInput().description().toUtf8();
-		strncpy(CaptureDevice, defaultIn.constData(), sizeof(CaptureDevice) - 1);
-		CaptureDevice[sizeof(CaptureDevice) - 1] = '\0';
-	}
+		qstrncpy(CaptureDevice,
+			QMediaDevices::defaultAudioInput().description().toUtf8().constData(),
+			sizeof(CaptureDevice));
 	if (PlaybackDevice[0] == '\0')
-	{
-		QByteArray defaultOut = QMediaDevices::defaultAudioOutput().description().toUtf8();
-		strncpy(PlaybackDevice, defaultOut.constData(), sizeof(PlaybackDevice) - 1);
-		PlaybackDevice[sizeof(PlaybackDevice) - 1] = '\0';
-	}
+		qstrncpy(PlaybackDevice,
+			QMediaDevices::defaultAudioOutput().description().toUtf8().constData(),
+			sizeof(PlaybackDevice));
 #endif
 
 	raduga = settings->value("Init/DispMode", DISP_RGB).toInt();
