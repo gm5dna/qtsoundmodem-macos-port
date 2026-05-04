@@ -245,7 +245,11 @@ void getSettings()
 	pttGPIOPin = settings->value("Init/pttGPIOPin", 17).toInt();
 	pttGPIOPinR = settings->value("Init/pttGPIOPinR", 17).toInt();
 
-#ifdef WIN32
+#if defined(WIN32) || defined(__APPLE__)
+	// macOS goes through the libhidapi VID/PID path in
+	// SMMain.c::DecodeCM108 (same branch as Windows). The Linux
+	// /dev/hidraw0 default would be parsed by strtol() as VID=0/PID=0
+	// and silently fail to bind on first launch.
 	strcpy(CM108Addr, settings->value("Init/CM108Addr", "0xD8C:0x08").toString().toUtf8());
 #else
 	strcpy(CM108Addr, settings->value("Init/CM108Addr", "/dev/hidraw0").toString().toUtf8());
