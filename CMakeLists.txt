@@ -1,0 +1,214 @@
+cmake_minimum_required(VERSION 3.16)
+
+# QtSoundModem — macOS-port CMake build.
+#
+# Buildability across the macos-port commit series (this is commit 2 of 6):
+#   commit 2 (this commit): cmake -S . -B build configures cleanly on macOS.
+#                           Compile/link will fail — by design — because:
+#                             * QtSoundModem.{cpp,h} still use Qt 5 Multimedia
+#                               APIs (QAudioDeviceInfo, QAudioInput, ...).
+#                             * Apple has no MacBits.c / hid_mac.c /
+#                               MacPermissions.mm yet, so platform symbols
+#                               (Sleep, stricmp, Debugprintf, platformInit,
+#                               InitSound, CloseSound, GetSoundDevices) are
+#                               unresolved.
+#   commit 3: tighten LinuxBits.c __ARM_ARCH guard.
+#   commit 4: add MacBits.c (POSIX + logging shims).
+#   commit 5: migrate Qt Multimedia Qt5 → Qt6 in QtSoundModem.{cpp,h}.
+#   commit 6: add hid_mac.c, MacPermissions.mm, default SoundMode=5 on macOS;
+#             at this point the macOS bundle compiles, links, and runs.
+#
+# The qmake .pro file is intentionally retained — upstream's Linux + Windows
+# qmake build remains untouched. CMake also configures on Linux so this file
+# isn't dead weight when rebasing on upstream master.
+
+# Apple Silicon-only target for the macOS port. Set before project()
+# so CMake's compiler probe runs against the right architecture and
+# deployment target.
+if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+    if(NOT DEFINED CMAKE_OSX_ARCHITECTURES)
+        set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "" FORCE)
+    endif()
+    if(NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "" FORCE)
+    endif()
+endif()
+
+project(QtSoundModem
+    VERSION 0.0.0.76
+    LANGUAGES C CXX
+)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_C_STANDARD 11)
+
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTOUIC ON)
+set(CMAKE_AUTORCC ON)
+
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+find_package(Qt6 6.5 REQUIRED COMPONENTS
+    Core
+    Gui
+    Widgets
+    Network
+    SerialPort
+    Multimedia
+)
+
+# fftw3f — single-precision FFT, required on every platform.
+find_library(FFTW3F_LIBRARY
+    NAMES fftw3f
+    HINTS
+        ENV FFTW3F_ROOT
+        /opt/homebrew/lib
+        /opt/homebrew/opt/fftw/lib
+        /usr/local/lib
+        /usr/local/opt/fftw/lib
+)
+find_path(FFTW3F_INCLUDE_DIR
+    NAMES fftw3.h
+    HINTS
+        ENV FFTW3F_ROOT
+        /opt/homebrew/include
+        /opt/homebrew/opt/fftw/include
+        /usr/local/include
+        /usr/local/opt/fftw/include
+)
+if(NOT FFTW3F_LIBRARY OR NOT FFTW3F_INCLUDE_DIR)
+    message(FATAL_ERROR
+        "fftw3f not found. On macOS: brew install fftw. "
+        "On Debian/Ubuntu: apt install libfftw3-dev.")
+endif()
+
+# Platform-agnostic sources — compiled on every supported platform.
+set(QSM_COMMON_SOURCES
+    main.cpp
+    QtSoundModem.cpp
+    Config.cpp
+    ShowFilter.cpp
+    tcpCode.cpp
+    6pack.cpp
+
+    ax25.c
+    ax25_agw.c
+    ax25_demod.c
+    ax25_fec.c
+    ax25_l2.c
+    ax25_mod.c
+    berlekamp.c
+    BusyDetect.c
+    galois.c
+    il2p.c
+    kiss_mode.c
+    Modulate.c
+    ofdm.c
+    pktARDOP.c
+    rs.c
+    rsid.c
+    RSUnit.c
+    SMMain.c
+    sm_main.c
+    SoundInput.c
+    UZ7HOUtils.c
+    ARDOPC.c
+    ardopSampleArrays.c
+    dw9600.c
+)
+
+set(QSM_HEADERS
+    UZ7HOStuff.h
+    QtSoundModem.h
+    tcpCode.h
+)
+
+set(QSM_FORMS
+    calibrateDialog.ui
+    devicesDialog.ui
+    filterWindow.ui
+    ModemDialog.ui
+    QtSoundModem.ui
+)
+
+set(QSM_RESOURCES
+    QtSoundModem.qrc
+)
+
+# Platform-specific audio / OS-shim sources.
+#
+# Sources excluded from the macOS build (kept in tree so upstream
+# rebases stay clean): ALSASound.c, pulse.c, audio.c, Linux.c,
+# LinuxBits.c, Waveout.c, hid.c.
+set(QSM_PLATFORM_SOURCES "")
+if(APPLE)
+    # macOS sources land in later commits of the macos-port series:
+    #   commit 4: MacBits.c
+    #   commit 6: hid_mac.c, MacPermissions.mm
+endif()
+if(UNIX AND NOT APPLE)
+    list(APPEND QSM_PLATFORM_SOURCES
+        ALSASound.c
+        pulse.c
+        audio.c
+        Linux.c
+    )
+endif()
+
+# Bundle target on macOS, plain executable elsewhere.
+if(APPLE)
+    add_executable(QtSoundModem MACOSX_BUNDLE
+        ${QSM_COMMON_SOURCES}
+        ${QSM_PLATFORM_SOURCES}
+        ${QSM_HEADERS}
+        ${QSM_FORMS}
+        ${QSM_RESOURCES}
+    )
+
+    set_target_properties(QtSoundModem PROPERTIES
+        MACOSX_BUNDLE_INFO_PLIST       "${CMAKE_SOURCE_DIR}/macos/Info.plist.in"
+        MACOSX_BUNDLE_GUI_IDENTIFIER   "com.gm5dna.qtsoundmodem"
+        MACOSX_BUNDLE_BUNDLE_NAME      "QtSoundModem"
+        MACOSX_BUNDLE_BUNDLE_VERSION   "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_COPYRIGHT        "Copyright (C) 2019-2024 UZ7HO, G8BPQ contributors"
+    )
+
+    include("${CMAKE_SOURCE_DIR}/cmake/macdeployqt.cmake")
+else()
+    add_executable(QtSoundModem
+        ${QSM_COMMON_SOURCES}
+        ${QSM_PLATFORM_SOURCES}
+        ${QSM_HEADERS}
+        ${QSM_FORMS}
+        ${QSM_RESOURCES}
+    )
+endif()
+
+target_link_libraries(QtSoundModem PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
+    Qt6::Network
+    Qt6::SerialPort
+    Qt6::Multimedia
+    "${FFTW3F_LIBRARY}"
+)
+
+target_include_directories(QtSoundModem PRIVATE
+    "${CMAKE_SOURCE_DIR}"
+    "${FFTW3F_INCLUDE_DIR}"
+)
+
+if(UNIX AND NOT APPLE)
+    # ALSA + dlopen for runtime-loaded libpulse (see pulse.c).
+    find_library(ASOUND_LIBRARY NAMES asound)
+    if(NOT ASOUND_LIBRARY)
+        message(FATAL_ERROR "libasound not found (apt install libasound2-dev).")
+    endif()
+    target_link_libraries(QtSoundModem PRIVATE
+        "${ASOUND_LIBRARY}"
+        ${CMAKE_DL_LIBS}
+    )
+endif()
