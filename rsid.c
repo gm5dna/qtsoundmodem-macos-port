@@ -29,7 +29,11 @@
 // ----------------------------------------------------------------------------
 
 
+#if defined(__APPLE__)
+#include <stdlib.h>     // malloc/free; <malloc.h> is Linux-specific.
+#else
 #include <malloc.h>
+#endif
 
 #include "rsid.h"
 #include <math.h>

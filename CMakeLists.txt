@@ -2,19 +2,35 @@ cmake_minimum_required(VERSION 3.16)
 
 # QtSoundModem — macOS-port CMake build.
 #
-# Buildability across the macos-port commit series (this is commit 4 of 6):
+# Buildability across the macos-port commit series (this is commit 5 of 6):
 #   commit 2: cmake configure clean on macOS; compile/link fails by design.
 #   commit 3: tighten LinuxBits.c __ARM_ARCH guard.
-#   commit 4 (this commit): add MacBits.c (Sleep, stricmp, memicmp,
-#                           Debugprintf, txSleep, platformInit). Tightens
-#                           SMMain.c __ARM_ARCH guards so the macOS link
-#                           does not reference Pi GPIO symbols.
-#                           Compile/link still fails — QtSoundModem.{cpp,h}
-#                           use Qt 5 Multimedia APIs and the audio entry
-#                           points (InitSound/CloseSound/GetSoundDevices)
-#                           are unresolved until commits 5–6.
-#   commit 5: migrate Qt Multimedia Qt5 → Qt6 in QtSoundModem.{cpp,h}.
+#   commit 4: add MacBits.c (POSIX + serial PTT shims); tighten SMMain.c
+#             __ARM_ARCH guards so Pi GPIO symbols are not referenced.
+#   commit 5 (this commit): migrate Qt Multimedia Qt5 → Qt6 in
+#                           QtSoundModem.{cpp,h} + Config.cpp; add audio
+#                           device-name storage to MacBits.c. Also fixes
+#                           Qt 6 / macOS toolchain collisions that surface
+#                           when the Qt5-API errors clear: UZ7HOStuff.h's
+#                           Byte/Word/etc. macros become typedefs (Qt 6
+#                           uses 'Byte' as a template parameter name);
+#                           tcpCode.cpp / ax25.c htonl forward decls are
+#                           skipped on __APPLE__ (macOS implements them
+#                           as macros); il2p.c popcount fallbacks are
+#                           skipped on clang/gcc; rsid.c includes
+#                           <stdlib.h> instead of <malloc.h> on macOS.
+#                           Every TU compiles. Link still fails — symbols
+#                           routed through ALSASound.c / Linux.c (e.g.
+#                           InitSound, SoundInit, SoundFlush, SendtoCard,
+#                           getTicks, PollReceivedSamples, plus storage
+#                           globals SoundMode / ReceiveSize / SendSize /
+#                           onlyMixSnoop / txLatency / pttclk /
+#                           CaptureIndex / PlayBackIndex / using48000 /
+#                           useTimedPTT / CurrentLevel / CurrentLevelR /
+#                           initPulse / printtick) are deferred to
+#                           commit 6.
 #   commit 6: add hid_mac.c, MacPermissions.mm, default SoundMode=5 on macOS;
+#             provide MacBits.c stubs/storage for the symbols listed above;
 #             at this point the macOS bundle compiles, links, and runs.
 #
 # The qmake .pro file is intentionally retained — upstream's Linux + Windows

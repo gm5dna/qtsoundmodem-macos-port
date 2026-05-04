@@ -264,11 +264,15 @@ uint64_t BusyActivemS[4] = { 0 };
 int AvPTT[4] = { 0 };
 int AvBusy[4] = { 0 };
 
-QList<QAudioDeviceInfo> inputDevices = QAudioDeviceInfo::availableDevices(QAudio::AudioInput);
-QList<QAudioDeviceInfo> outputDevices = QAudioDeviceInfo::availableDevices(QAudio::AudioOutput);
+// Qt 6 requires a QCoreApplication instance for QMediaDevices to
+// enumerate; populating these at file scope (Qt 5 worked there)
+// returns empty lists and a "requires QCoreApplication" warning.
+// Default-construct here, populate lazily in GetAudioDevices().
+QList<QAudioDevice> inputDevices;
+QList<QAudioDevice> outputDevices;
 
-QAudioDeviceInfo inDeviceInfo = QAudioDeviceInfo::defaultInputDevice();
-QAudioDeviceInfo outDeviceInfo = QAudioDeviceInfo::defaultOutputDevice();
+QAudioDevice inDeviceInfo;
+QAudioDevice outDeviceInfo;
 
 extern "C" void WriteDebugLog(char * Mess)
 {
@@ -3917,7 +3921,7 @@ void QtSoundModem::StartWatchdog()
 
 	 if (!serial.open(QIODevice::ReadWrite))
 	 {
-		 Debugprintf("Can't open %s, error code %d", portName, serial.error());
+		 Debugprintf("Can't open %s, error code %d", qPrintable(portName), serial.error());
 		 return;
 	 }
  
@@ -3955,8 +3959,8 @@ void QtSoundModem::StartWatchdog()
  static QIODevice * out;
  static QIODevice * in;
 
- QAudioOutput * m_audioOutput;
- QAudioInput * m_audioInput;
+ QAudioSink * m_audioOutput;
+ QAudioSource * m_audioInput;
 
 #ifndef WIN32
  extern "C" int stricmp(char * pStr1, char *pStr2);
@@ -3964,20 +3968,32 @@ void QtSoundModem::StartWatchdog()
 
  void QtSoundModem::GetAudioDevices()
  {
+	 // Refresh the cached lists every time. Qt 6's QMediaDevices needs
+	 // a live QCoreApplication and the user can hot-plug devices.
+	 inputDevices = QMediaDevices::audioInputs();
+	 outputDevices = QMediaDevices::audioOutputs();
+	 if (inDeviceInfo.isNull())
+		 inDeviceInfo = QMediaDevices::defaultAudioInput();
+	 if (outDeviceInfo.isNull())
+		 outDeviceInfo = QMediaDevices::defaultAudioOutput();
+
 	 CaptureCount = 0;
 	 Debugprintf("Capture Devices:");
 
 	 for (int i = 0; i < inputDevices.count(); ++i)
 	 {
-		 QString deviceName = inputDevices[i].deviceName();
+		 QString deviceName = inputDevices[i].description();
 
 		 if (strstr(deviceName.toUtf8(), "surround") == 0)
 		 {
 			 strcpy(CaptureNames[CaptureCount], deviceName.toUtf8());
 
+			 // TODO(macos): description() is not unique on macOS for
+			 // duplicate identical USB devices. Migrate persistence to
+			 // QAudioDevice::id() (QByteArray) if users hit this.
 			 if (stricmp(&CaptureNames[CaptureCount++][0], CaptureDevice) == 0)
 			 {
-				if (inDeviceInfo == QAudioDeviceInfo::defaultInputDevice())
+				if (inDeviceInfo == QMediaDevices::defaultAudioInput())
 					 inDeviceInfo = inputDevices[i];
 
 				qDebug() << "* " << deviceName;
@@ -3992,15 +4008,16 @@ void QtSoundModem::StartWatchdog()
 
 	 for (int i = 0; i < outputDevices.count(); ++i)
 	 {
-		 QString deviceName = outputDevices[i].deviceName();
+		 QString deviceName = outputDevices[i].description();
 
 		 if (strstr(deviceName.toUtf8(), "surround") == 0)
 		 {
 			 strcpy(PlaybackNames[PlaybackCount], deviceName.toUtf8());
 
+			 // TODO(macos): see CaptureNames matcher comment above.
 			 if (stricmp(&PlaybackNames[PlaybackCount++][0], PlaybackDevice) == 0)
 			 {
-				 if (outDeviceInfo == QAudioDeviceInfo::defaultOutputDevice())
+				 if (outDeviceInfo == QMediaDevices::defaultAudioOutput())
 					 outDeviceInfo = outputDevices[i];
 				 qDebug() << "* " << deviceName;
 			 }
@@ -4049,7 +4066,10 @@ void QtSoundModem::StartWatchdog()
 	 switch (newState)
 	 {
 	 case QAudio::StoppedState:
-		 if (m_audioInput->error() != QAudio::NoError)
+		 // Upstream typo: was checking m_audioInput here. The branch was
+		 // empty so it had no functional effect, but reading the wrong
+		 // pointer makes the code misleading. Touched on the way past.
+		 if (m_audioOutput->error() != QAudio::NoError)
 		 {
 			 // Error handling
 		 }
@@ -4101,58 +4121,71 @@ void QtSoundModem::StartWatchdog()
 
 
 
- void QtSoundModem::initializeAudioIn(const QAudioDeviceInfo &deviceInfo)
+ // The downstream modem code (PollQSound, sendSamplestoQSound) hard-codes
+ // 12 kHz / 2 channels / Int16 — it casts the captured byte stream to
+ // signed shorts and writes n*4-byte chunks of stereo Int16 to the sink.
+ // If the device cannot do that exact format, falling back to the
+ // device's preferred format will *open* the stream but produce garbage
+ // (wrong sample rate or float samples reinterpreted as Int16). The Qt 5
+ // version had the same latent bug via nearestFormat(); fixing it
+ // properly needs a Qt resampler in the modem feed and is out of scope
+ // for the Qt5→Qt6 migration. Surface the mismatch loudly via
+ // Debugprintf so it lands in the trace pane.
+
+ void QtSoundModem::initializeAudioIn(const QAudioDevice &deviceInfo)
  {
+	 // Qt 6 dropped QAudioFormat::setSampleSize / setCodec / setByteOrder /
+	 // setSampleType. Codec is always PCM, byte order is native, and sample
+	 // type + size collapse into a single SampleFormat enum.
+
 	 QAudioFormat format;
 	 format.setSampleRate(12000);
 	 format.setChannelCount(2);
-	 format.setSampleSize(16);
-	 format.setCodec("audio/pcm");
-	 format.setByteOrder(QAudioFormat::LittleEndian);
-	 format.setSampleType(QAudioFormat::SignedInt);
+	 format.setSampleFormat(QAudioFormat::Int16);
 
-	 qDebug() << "Opening Input Device " << deviceInfo.deviceName();
+	 qDebug() << "Opening Input Device " << deviceInfo.description();
 
 	 if (!deviceInfo.isFormatSupported(format))
 	 {
-		 QList<int> sampleRatez = deviceInfo.supportedSampleRates();
-		 qWarning() << "Default format not supported - trying to use nearest";
-		 format = deviceInfo.nearestFormat(format);
+		 format = deviceInfo.preferredFormat();
+		 Debugprintf("WARNING: input device does not support 12 kHz/stereo/Int16; "
+			 "falling back to %d Hz / %d ch / sample-format %d. Modem decode "
+			 "will degrade until a future commit adds resampling.",
+			 format.sampleRate(), format.channelCount(),
+			 (int)format.sampleFormat());
 	 }
 
 	 qDebug() << "Sample Rate" << format.sampleRate();
 
-	 m_audioInput = new QAudioInput(deviceInfo, format, this);
-	 connect(m_audioInput, SIGNAL(stateChanged(QAudio::State)), this, SLOT(audioInStateChanged(QAudio::State)));
+	 m_audioInput = new QAudioSource(deviceInfo, format, this);
+	 connect(m_audioInput, &QAudioSource::stateChanged, this, &QtSoundModem::audioInStateChanged);
 
 	 m_audioInput->setBufferSize(16384);
-	 int n = m_audioInput->bufferSize();
 	 in = m_audioInput->start();
  }
- void QtSoundModem::initializeAudioOut(const QAudioDeviceInfo &deviceInfo)
+ void QtSoundModem::initializeAudioOut(const QAudioDevice &deviceInfo)
  {
 	 QAudioFormat format;
 	 format.setSampleRate(12000);
 	 format.setChannelCount(2);
-	 format.setSampleSize(16);
-	 format.setCodec("audio/pcm");
-	 format.setByteOrder(QAudioFormat::LittleEndian);
-	 format.setSampleType(QAudioFormat::SignedInt);
+	 format.setSampleFormat(QAudioFormat::Int16);
 
-	 qDebug() << "Opening Output Device " << deviceInfo.deviceName();
+	 qDebug() << "Opening Output Device " << deviceInfo.description();
 
 	 if (!deviceInfo.isFormatSupported(format))
 	 {
-		 QList<int> sampleRatez = deviceInfo.supportedSampleRates();
-
-		 qWarning() << "Default format not supported - trying to use nearest";
-		 format = deviceInfo.nearestFormat(format);
+		 format = deviceInfo.preferredFormat();
+		 Debugprintf("WARNING: output device does not support 12 kHz/stereo/Int16; "
+			 "falling back to %d Hz / %d ch / sample-format %d. TX audio "
+			 "will sound wrong until a future commit adds resampling.",
+			 format.sampleRate(), format.channelCount(),
+			 (int)format.sampleFormat());
 	 }
 
 	 qDebug() << "Sample Rate" << format.sampleRate();
 
-	 m_audioOutput = new QAudioOutput(deviceInfo, format, this);
-	 connect(m_audioOutput, SIGNAL(stateChanged(QAudio::State)), this, SLOT(audioOutStateChanged(QAudio::State)));
+	 m_audioOutput = new QAudioSink(deviceInfo, format, this);
+	 connect(m_audioOutput, &QAudioSink::stateChanged, this, &QtSoundModem::audioOutStateChanged);
 
 	 m_audioOutput->setBufferSize(16384);
 	 int n = m_audioOutput->bufferSize();
@@ -4169,12 +4202,19 @@ void QtSoundModem::StartWatchdog()
 
  extern "C" void txSleep(int mS);
 
+ // Qt 6 dropped QAudioSink::periodSize() / QAudioSource::periodSize().
+ // 1024 bytes = 256 stereo Int16 frames at 12 kHz, ~21 ms. Twice the
+ // 512-byte block PollQSound slices Buffer into; large enough to
+ // amortise the per-read overhead, small enough that the worker-thread
+ // poll cadence stays responsive.
+ static const int kAudioPeriodBytes = 1024;
+
  extern "C" unsigned short * sendSamplestoQSound(unsigned short * buf, int n)
  {
 
 	 int in = 0;
 	 int space = m_audioOutput->bytesFree();
-	 int size = m_audioOutput->periodSize();
+	 int size = kAudioPeriodBytes;
 	 int chunks = space / size;
 
 	 Debugprintf("ToSend %d Space %d Period Size %d chunks %d ", n * 4, space, size, chunks);
@@ -4195,7 +4235,7 @@ void QtSoundModem::StartWatchdog()
 	 int x = out->write((char *)buf, n * 4);
 
 	 space = m_audioOutput->bytesFree();
-	 size = m_audioOutput->periodSize();
+	 size = kAudioPeriodBytes;
 	 chunks = space / size;
 
 	 Debugprintf("Space %d Period Size %d chunks %d ", space, size, chunks);
@@ -4234,11 +4274,11 @@ extern "C" void PollQSound()
 
 	int len = 0;
 
-	int size = m_audioOutput->periodSize();
+	int size = kAudioPeriodBytes;
 
-	// I think we have to read periodsize, but modem expects 512 byte blocks so have to do partial reads
+	// Modem expects 512 byte blocks so do partial reads via kAudioPeriodBytes.
 
-	len = m_audioInput->bytesReady();
+	len = m_audioInput->bytesAvailable();
 
 	int x = in->read(&Buffer[BufferLen], size);
 

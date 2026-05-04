@@ -23,6 +23,10 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 #include <QSettings>
 #include <QDialog>
 #include <QMessageBox>
+#if defined(Q_OS_MACOS)
+#include <QtMultimedia/QMediaDevices>
+#include <QtMultimedia/QAudioDevice>
+#endif
 
 #include "UZ7HOStuff.h"
 
@@ -173,8 +177,40 @@ void getSettings()
 
 	onlyMixSnoop = settings->value("Init/onlyMixSnoop", 0).toBool();
 
-	strcpy(CaptureDevice, settings->value("Init/SndRXDeviceName", "hw:1,0").toString().toUtf8());
-	strcpy(PlaybackDevice, settings->value("Init/SndTXDeviceName", "hw:1,0").toString().toUtf8());
+	// Defaults are platform-specific. Linux ALSA needs a real device
+	// spec ("hw:1,0") because SoundMode 0 (ALSA) is the Linux default
+	// and snd_pcm_open("") fails. macOS uses the Qt path (SoundMode 5)
+	// and resolves an empty saved name to the current system default's
+	// description before any UI uses the value — leaving it empty would
+	// hijack the device dialog (findText("") matches the first combo
+	// item, so a no-change OK click silently locks the user to whatever
+	// device happens to be enumerated first). Existing user settings
+	// are preserved verbatim.
+#if defined(Q_OS_MACOS)
+	const char * defaultDeviceName = "";
+#else
+	const char * defaultDeviceName = "hw:1,0";
+#endif
+	strcpy(CaptureDevice, settings->value("Init/SndRXDeviceName", defaultDeviceName).toString().toUtf8());
+	strcpy(PlaybackDevice, settings->value("Init/SndTXDeviceName", defaultDeviceName).toString().toUtf8());
+
+#if defined(Q_OS_MACOS)
+	// CoreAudio descriptions can exceed 79 UTF-8 bytes (e.g. some USB
+	// audio interfaces have long manufacturer-prefixed names); bound
+	// the copy and zero-terminate.
+	if (CaptureDevice[0] == '\0')
+	{
+		QByteArray defaultIn = QMediaDevices::defaultAudioInput().description().toUtf8();
+		strncpy(CaptureDevice, defaultIn.constData(), sizeof(CaptureDevice) - 1);
+		CaptureDevice[sizeof(CaptureDevice) - 1] = '\0';
+	}
+	if (PlaybackDevice[0] == '\0')
+	{
+		QByteArray defaultOut = QMediaDevices::defaultAudioOutput().description().toUtf8();
+		strncpy(PlaybackDevice, defaultOut.constData(), sizeof(PlaybackDevice) - 1);
+		PlaybackDevice[sizeof(PlaybackDevice) - 1] = '\0';
+	}
+#endif
 
 	raduga = settings->value("Init/DispMode", DISP_RGB).toInt();
 
@@ -366,6 +402,13 @@ void saveAX25Param(const char * key, QVariant Value)
 	settings->setValue(fullKey, Value);
 }
 
+// Qt 6 dropped the implicit char*->QVariant conversion. Overload for
+// raw C strings keeps existing call sites compiling unchanged.
+void saveAX25Param(const char * key, const char * Value)
+{
+	saveAX25Param(key, QVariant(QString::fromUtf8(Value)));
+}
+
 void saveAX25Params(int chan)
 {
 	Prefix[5] = chan + 'A';
@@ -419,7 +462,7 @@ void saveSettings()
 	settings->setValue("Init/TXPort", TXPort);
 
 	settings->setValue("Init/UDPServer", UDPServ);
-	settings->setValue("Init/UDPHost", UDPHost);
+	settings->setValue("Init/UDPHost", QString::fromUtf8(UDPHost));
 
 
 //	settings->setValue("Init/TXSampleRate", TX_SR);
@@ -428,8 +471,8 @@ void saveSettings()
 
 	settings->setValue("Init/onlyMixSnoop", onlyMixSnoop);
 	
-	settings->setValue("Init/SndRXDeviceName", CaptureDevice);
-	settings->setValue("Init/SndTXDeviceName", PlaybackDevice);
+	settings->setValue("Init/SndRXDeviceName", QString::fromUtf8(CaptureDevice));
+	settings->setValue("Init/SndTXDeviceName", QString::fromUtf8(PlaybackDevice));
 
 	settings->setValue("Init/useKISSControls", useKISSControls);
 	settings->setValue("Init/SCO", SCO);
@@ -438,25 +481,25 @@ void saveSettings()
 
 	settings->setValue("Init/DispMode", raduga);
 
-	settings->setValue("Init/PTT", PTTPort);
+	settings->setValue("Init/PTT", QString::fromUtf8(PTTPort));
 	settings->setValue("Init/PTTBAUD", PTTBAUD);
 	settings->setValue("Init/PTTMode", PTTMode);
 
-	settings->setValue("Init/PTTOffString", PTTOffString);
-	settings->setValue("Init/PTTOnString", PTTOnString);
+	settings->setValue("Init/PTTOffString", QString::fromUtf8(PTTOffString));
+	settings->setValue("Init/PTTOnString", QString::fromUtf8(PTTOnString));
 
 	settings->setValue("Init/pttGPIOPin", pttGPIOPin);
 	settings->setValue("Init/pttGPIOPinR", pttGPIOPinR);
 
-	settings->setValue("Init/CM108Addr", CM108Addr);
+	settings->setValue("Init/CM108Addr", QString::fromUtf8(CM108Addr));
 	settings->setValue("Init/HamLibPort", HamLibPort);
-	settings->setValue("Init/HamLibHost", HamLibHost);
+	settings->setValue("Init/HamLibHost", QString::fromUtf8(HamLibHost));
 	settings->setValue("Init/FLRigPort", FLRigPort);
-	settings->setValue("Init/FLRigHost", FLRigHost);
+	settings->setValue("Init/FLRigHost", QString::fromUtf8(FLRigHost));
 
 	settings->setValue("Init/MinimizetoTray", MintoTray);
 	settings->setValue("Init/multiCore", multiCore);
-	settings->setValue("Init/Wisdom", Wisdom);
+	settings->setValue("Init/Wisdom", QString::fromUtf8(Wisdom));
 
 	settings->setValue("Init/WaterfallMin", WaterfallMin);
 	settings->setValue("Init/WaterfallMax", WaterfallMax);
@@ -497,7 +540,7 @@ void saveSettings()
 
 	settings->setValue("SixPack/Enable", SixPackEnable);
 	settings->setValue("SixPack/Port", SixPackPort);
-	settings->setValue("SixPack/Device", SixPackDevice);
+	settings->setValue("SixPack/Device", QString::fromUtf8(SixPackDevice));
 
 	settings->setValue("Modem/PreEmphasisAll1", emph_all[0]);
 	settings->setValue("Modem/PreEmphasisAll2", emph_all[1]);
@@ -522,8 +565,8 @@ void saveSettings()
 	settings->setValue("Modem/TxTail3", txtail[2]);
 	settings->setValue("Modem/TxTail4", txtail[3]);
 
-	settings->setValue("Modem/CWIDCall", CWIDCall);
-	settings->setValue("Modem/CWIDMark", CWIDMark);
+	settings->setValue("Modem/CWIDCall", QString::fromUtf8(CWIDCall));
+	settings->setValue("Modem/CWIDMark", QString::fromUtf8(CWIDMark));
 	settings->setValue("Modem/CWIDInterval", CWIDInterval);
 	settings->setValue("Modem/CWIDLeft", CWIDLeft);
 	settings->setValue("Modem/CWIDRight", CWIDRight);
