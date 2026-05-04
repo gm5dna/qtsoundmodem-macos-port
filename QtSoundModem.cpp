@@ -2773,7 +2773,16 @@ void QtSoundModem::deviceaccept()
 			initializeAudioOut(outDeviceInfo);
 			initializeAudioIn(inDeviceInfo);
 
-			QtSoundInit();
+			// QtSoundInit() was called here historically but it
+			// re-runs initializeAudio{In,Out} a second time against
+			// the same just-opened devices. CoreAudio refuses the
+			// second open silently on hardware devices (e.g. Yaesu
+			// FT-710 USB codec, USB sound dongles), leaving the
+			// app with no working stream. The one-time setup that
+			// QtSoundInit owns (mic permission probe, DMABuffer
+			// wire-up, QMediaDevices change signals) has already
+			// run from the QtSoundModem constructor — re-running
+			// it on every device switch is wrong.
 		}
 
 		else
