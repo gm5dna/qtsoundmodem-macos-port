@@ -25,6 +25,11 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 #include "QtSoundModem.h"
 #include <QtWidgets/QApplication>
 #include "UZ7HOStuff.h"
+#if defined(Q_OS_MACOS)
+#include <QStandardPaths>
+#include <QDir>
+#include <QDebug>
+#endif
 
 extern "C" int nonGUIMode;
 
@@ -62,6 +67,27 @@ int main(int argc, char *argv[])
 		a = new QCoreApplication(argc, argv);
 	else
 		a = new QApplication(argc, argv);			// GUI version
+
+#if defined(Q_OS_MACOS)
+	// Config / Save Settings open "QtSoundModem.ini" via a *relative*
+	// path. Linux/Windows users launch from the install dir so the
+	// cwd happens to be writable; a Finder-launched .app has cwd=/
+	// and QSettings::AccessError fires on first save. Set org/app
+	// metadata so QStandardPaths gives a uniquely-named subdir, then
+	// chdir into it before any QSettings call.
+	QCoreApplication::setOrganizationName("gm5dna");
+	QCoreApplication::setOrganizationDomain("gm5dna.com");
+	QCoreApplication::setApplicationName("QtSoundModem");
+	QString macConfigDir = QStandardPaths::writableLocation(
+		QStandardPaths::AppDataLocation);
+	if (!macConfigDir.isEmpty())
+	{
+		QDir().mkpath(macConfigDir);
+		if (!QDir::setCurrent(macConfigDir))
+			qWarning() << "Failed to chdir to" << macConfigDir
+				<< "— settings may fail to save.";
+	}
+#endif
 
 	getSettings();
 
