@@ -42,6 +42,15 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 //                  but not the Microsoft-style stricmp the codebase
 //                  calls.
 //   memicmp      - case-insensitive memcmp.
+//   OpenCOMPort, CloseCOMPort, WriteCOMBlock,
+//   COMSetRTS, COMClearRTS, COMSetDTR, COMClearDTR
+//                - POSIX termios serial port + TIOCM line-state ioctls.
+//                  Used by SMMain.c's PTT path for Signalink-style
+//                  RTS/DTR keying. macOS supports the same termios +
+//                  TIOCMGET/TIOCMSET interface as Linux, so these are
+//                  near-verbatim copies of Linux.c's implementations
+//                  with EAGAIN/EWOULDBLOCK substituted for the magic
+//                  errno values 11/35.
 //
 // Deliberately NOT provided here:
 //   - GPIO functions (gpioInitialise, gpioWrite, gpioSetMode,
@@ -59,7 +68,11 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 #include <signal.h>
 #include <string.h>
 #include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <termios.h>
 #include <unistd.h>
+#include <sys/ioctl.h>
 
 #include "UZ7HOStuff.h"
 
@@ -164,4 +177,195 @@ void platformInit(void)
 		perror("SIGHUP");
 	if (sigaction(SIGPIPE, &act, NULL) < 0)
 		perror("SIGPIPE");
+}
+
+// Serial port shims for SMMain.c's PTT path (Signalink-style RTS/DTR
+// keying). Mirrors Linux.c, with termios + TIOCM ioctls that are
+// portable to macOS as-is. macOS expects /dev/cu.* or /dev/tty.* device
+// names; SMMain.c prepends "/dev/", so users should configure PTTPort
+// as e.g. "cu.usbserial-XXXX".
+
+static const struct {
+	int user_speed;
+	speed_t termios_speed;
+} mac_speed_table[] = {
+	{ 300,    B300 },
+	{ 600,    B600 },
+	{ 1200,   B1200 },
+	{ 2400,   B2400 },
+	{ 4800,   B4800 },
+	{ 9600,   B9600 },
+	{ 19200,  B19200 },
+	{ 38400,  B38400 },
+	{ 57600,  B57600 },
+	{ 115200, B115200 },
+	{ -1,     B0 },
+};
+
+// On TIOCMGET failure (USB serial unplug, driver without modem-control
+// bits) status would be uninitialised, so bail out before TIOCMSET
+// would otherwise drive the line to a garbage state.
+
+void COMSetDTR(int fd)
+{
+	int status;
+
+	if (ioctl(fd, TIOCMGET, &status) == -1)
+	{
+		perror("COMSetDTR PTT TIOCMGET");
+		return;
+	}
+	status |= TIOCM_DTR;
+	if (ioctl(fd, TIOCMSET, &status) == -1)
+		perror("COMSetDTR PTT TIOCMSET");
+}
+
+void COMClearDTR(int fd)
+{
+	int status;
+
+	if (ioctl(fd, TIOCMGET, &status) == -1)
+	{
+		perror("COMClearDTR PTT TIOCMGET");
+		return;
+	}
+	status &= ~TIOCM_DTR;
+	if (ioctl(fd, TIOCMSET, &status) == -1)
+		perror("COMClearDTR PTT TIOCMSET");
+}
+
+void COMSetRTS(int fd)
+{
+	int status;
+
+	if (ioctl(fd, TIOCMGET, &status) == -1)
+	{
+		perror("COMSetRTS PTT TIOCMGET");
+		return;
+	}
+	status |= TIOCM_RTS;
+	if (ioctl(fd, TIOCMSET, &status) == -1)
+		perror("COMSetRTS PTT TIOCMSET");
+}
+
+void COMClearRTS(int fd)
+{
+	int status;
+
+	if (ioctl(fd, TIOCMGET, &status) == -1)
+	{
+		perror("COMClearRTS PTT TIOCMGET");
+		return;
+	}
+	status &= ~TIOCM_RTS;
+	if (ioctl(fd, TIOCMSET, &status) == -1)
+		perror("COMClearRTS PTT TIOCMSET");
+}
+
+int OpenCOMPort(char * Port, int speed, BOOL SetDTR, BOOL SetRTS, BOOL Quiet, int Stopbits)
+{
+	int fd;
+	u_long param = 1;
+	struct termios term;
+	int i;
+	speed_t termios_speed = B0;
+	char fulldev[80];
+	char buf[256];
+
+	(void)Stopbits;
+
+	snprintf(fulldev, sizeof(fulldev), "/dev/%s", Port);
+
+	if ((fd = open(fulldev, O_RDWR | O_NONBLOCK)) == -1)
+	{
+		if (Quiet == 0)
+		{
+			perror("Com Open Failed");
+			snprintf(buf, sizeof(buf), " %s could not be opened", fulldev);
+			Debugprintf("%s", buf);
+		}
+		return 0;
+	}
+
+	for (i = 0; mac_speed_table[i].user_speed != -1; i++)
+	{
+		if (mac_speed_table[i].user_speed == speed)
+		{
+			termios_speed = mac_speed_table[i].termios_speed;
+			break;
+		}
+	}
+	if (mac_speed_table[i].user_speed == -1)
+	{
+		Debugprintf("OpenCOMPort: invalid speed %d", speed);
+		close(fd);
+		return 0;
+	}
+
+	if (tcgetattr(fd, &term) == -1)
+	{
+		perror("OpenCOMPort tcgetattr");
+		close(fd);
+		return 0;
+	}
+
+	cfmakeraw(&term);
+	cfsetispeed(&term, termios_speed);
+	cfsetospeed(&term, termios_speed);
+
+	if (tcsetattr(fd, TCSANOW, &term) == -1)
+	{
+		perror("OpenCOMPort tcsetattr");
+		close(fd);
+		return 0;
+	}
+
+	ioctl(fd, FIONBIO, &param);
+
+	Debugprintf("Port %s fd %d", fulldev, fd);
+
+	if (SetDTR)
+		COMSetDTR(fd);
+	else
+		COMClearDTR(fd);
+
+	if (SetRTS)
+		COMSetRTS(fd);
+	else
+		COMClearRTS(fd);
+
+	return fd;
+}
+
+BOOL WriteCOMBlock(int fd, char * Block, int BytesToWrite)
+{
+	int ToSend = BytesToWrite;
+	int Sent = 0;
+	int ret;
+
+	while (ToSend)
+	{
+		ret = write(fd, &Block[Sent], ToSend);
+
+		if (ret >= ToSend)
+			return TRUE;
+
+		if (ret == -1)
+		{
+			if (errno != EAGAIN && errno != EWOULDBLOCK)
+				return FALSE;
+
+			usleep(10000);
+			ret = 0;
+		}
+
+		Sent += ret;
+		ToSend -= ret;
+	}
+	return TRUE;
+}
+
+void CloseCOMPort(int fd)
+{
+	close(fd);
 }
