@@ -52,7 +52,7 @@ void Sleep(int mS)
 
 // GPIO access stuff for PTT on PI
 
-#ifdef __ARM_ARCH
+#if defined(__linux__) && defined(__ARM_ARCH)
 
 /*
    tiny_gpio.c
