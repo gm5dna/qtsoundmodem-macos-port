@@ -248,15 +248,17 @@ extern "C" {
 
 	//Delphi Types remember case insensitive
 
-#define single float
-#define boolean int
-#define Byte unsigned char		//                  0 to 255
-#define Word unsigned short	//                        0 to 65,535
-#define SmallInt short 		//                  -32,768 to 32,767
-#define LongWord unsigned int	//                        0 to 4,294,967,295
- //  Int6 : Cardinal; //                        0 to 4,294,967,295
-#define LongInt int			//           -2,147,483,648 to 2,147,483,647
-#define Integer int  //           -2,147,483,648 to 2,147,483,647
+// Originally Delphi-style #define macros; converted to typedefs so
+// they don't substitute inside Qt 6 headers (which use 'Byte' as a
+// template parameter name in qbytearrayview.h, etc.).
+typedef float          single;
+typedef int            boolean;
+typedef unsigned char  Byte;     //                  0 to 255
+typedef unsigned short Word;     //                        0 to 65,535
+typedef short          SmallInt; //                  -32,768 to 32,767
+typedef unsigned int   LongWord; //                        0 to 4,294,967,295
+typedef int            LongInt;  //           -2,147,483,648 to 2,147,483,647
+typedef int            Integer;  //           -2,147,483,648 to 2,147,483,647
 //#define Int64 long long		 // -9,223,372,036,854,775,808 to 9,223,372,036,854,775,807
 
 //#define Byte unsigned char		//                  0 to 255
@@ -526,7 +528,7 @@ typedef struct TAX25Port_t
 	word n1;
 	word n2;
 	word IPOLL_cnt;
-	TStringList frame_buf; //буфер кадров на передачу
+	TStringList frame_buf; //пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 	TStringList I_frame_buf;
 	Byte status;
 	word clk_frack;
@@ -572,7 +574,7 @@ typedef struct TAX25Port_t
 #define STAT_TRY_UNLINK 5
 
 
-	// Сmd,Resp,Poll,Final,Digipeater flags
+	// пїЅmd,Resp,Poll,Final,Digipeater flags
 #define 	SET_P 1
 #define 	SET_F 0
 #define 	SET_C 1

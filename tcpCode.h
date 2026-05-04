@@ -1,3 +1,5 @@
+#pragma once
+
 #include <QtCore/QCoreApplication>
 #include <QtNetwork>
 //#include <QDebug>

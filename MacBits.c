@@ -51,6 +51,11 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 //                  near-verbatim copies of Linux.c's implementations
 //                  with EAGAIN/EWOULDBLOCK substituted for the magic
 //                  errno values 11/35.
+//   CaptureDevice, PlaybackDevice, CaptureNames, PlaybackNames,
+//   CaptureCount, PlaybackCount
+//                - Audio device-name storage. ALSASound.c / Waveout.c
+//                  own these on Linux/Windows; on macOS the Qt path
+//                  fills the arrays at runtime from QMediaDevices.
 //
 // Deliberately NOT provided here:
 //   - GPIO functions (gpioInitialise, gpioWrite, gpioSetMode,
@@ -369,3 +374,19 @@ void CloseCOMPort(int fd)
 {
 	close(fd);
 }
+
+// Audio device-name storage. ALSASound.c and Waveout.c each define
+// these for their platform; on macOS the Qt path in QtSoundModem.cpp
+// fills CaptureNames / PlaybackNames at runtime via QMediaDevices.
+// Default device names are empty strings — QtSoundModem.cpp falls
+// back to QMediaDevices::defaultAudioInput()/Output() when the
+// configured name does not match an enumerated device.
+
+char CaptureDevice[80] = "";
+char PlaybackDevice[80] = "";
+
+int CaptureCount = 0;
+int PlaybackCount = 0;
+
+char CaptureNames[256][256] = { "" };
+char PlaybackNames[256][256] = { "" };

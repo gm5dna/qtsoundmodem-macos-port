@@ -177,6 +177,9 @@ struct rs {
 #define IPRIM (rs->iprim)
 #define A0 (NN)
 
+// Fallback popcount for MSVC. clang/gcc expose these as builtins;
+// redefining them as functions clashes there.
+#if !defined(__clang__) && !defined(__GNUC__)
 int __builtin_popcountll(unsigned long long int i)
 {
 	return 0;
@@ -192,6 +195,7 @@ int __builtin_popcount(unsigned int n)
 	}
 	return count;
 }
+#endif
 
 static inline int modnn(struct rs *rs, int x) {
 	while (x >= rs->nn) {

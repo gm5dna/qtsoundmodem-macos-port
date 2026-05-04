@@ -1272,6 +1272,12 @@ extern "C" void UDPPollReceivedSamples()
 __declspec(dllimport) unsigned short __stdcall htons(__in unsigned short hostshort);
 __declspec(dllimport) unsigned short __stdcall ntohs(__in unsigned short hostshort);
 
+#elif defined(__APPLE__)
+
+// macOS implements these as macros (via __builtin_constant_p) in
+// <arpa/inet.h>, so Linux's forward declarations would clash.
+#include <arpa/inet.h>
+
 #else
 
 #include <stdint.h>
@@ -1281,7 +1287,7 @@ uint16_t htons(uint16_t hostshort);
 uint32_t ntohl(uint32_t netlong);
 uint16_t ntohs(uint16_t netshort);
 
-#endif 
+#endif
 
 
 extern "C" void * zalloc(int len)
@@ -1497,6 +1503,10 @@ void SHA1ProcessMessageBlock(SHA1Context *);
 void SHA1PadMessage(SHA1Context *);
 
 
+#if !defined(__APPLE__)
+// macOS provides htonl as a macro in <arpa/inet.h>; redefining it as
+// a function would clash. Linux/Windows still need this in-repo
+// implementation.
 uint32_t htonl(uint32_t x)
 {
 #if BYTE_ORDER == LITTLE_ENDIAN
@@ -1506,6 +1516,7 @@ uint32_t htonl(uint32_t x)
 	return x;
 #endif
 }
+#endif
 void SHA1Reset(SHA1Context *context)
 {
 	context->Length_Low = 0;
