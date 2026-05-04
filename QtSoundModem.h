@@ -90,6 +90,7 @@ private slots:
 	void QtSoundInit();
 	void initializeAudioIn(const QAudioDevice & deviceInfo);
 	void initializeAudioOut(const QAudioDevice & deviceInfo);
+	void onAudioDevicesChanged();
 	void closeQSound();
 	void clickedSlot();
 	void startCWIDTimerSlot();
@@ -109,6 +110,8 @@ private:
 
 	QMenu *setupMenu;
 	QMenu *viewMenu;
+
+	QMediaDevices * m_mediaDevices = nullptr;
 
 	QAction *actDevices;
 	QAction *actModems;

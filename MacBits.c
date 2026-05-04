@@ -398,3 +398,152 @@ int PlaybackCount = 0;
 
 char CaptureNames[256][256] = { "" };
 char PlaybackNames[256][256] = { "" };
+
+// Audio I/O state. Linux defines these in ALSASound.c / Linux.c;
+// Windows in Waveout.c. macOS routes everything through the Qt
+// path (SoundMode == 5 forced in Config.cpp::getSettings), so the
+// definitions here are minimum-viable storage with sensible
+// defaults. The Qt-path code in QtSoundModem.cpp owns the real
+// state; these globals are mostly read by code that gates on
+// SoundMode and bails out on the non-Qt branches.
+
+int SoundMode = 5;        // forced to Qt at config-load on macOS
+int onlyMixSnoop = 0;
+int txLatency = 50;       // matches Init/txLatency default
+int CaptureIndex = 0;
+int PlayBackIndex = 0;
+int using48000 = 0;
+int useTimedPTT = 1;      // matches ALSASound.c default
+int ReceiveSize = 512;    // matches Linux.c
+int SendSize = 1024;      // matches Linux.c
+unsigned char CurrentLevel = 0;
+unsigned char CurrentLevelR = 0;
+struct timespec pttclk;
+
+// Audio entry-point stubs. SMMain.c, Modulate.c, sm_main.c,
+// SoundInput.c and tcpCode.cpp call these from common code.
+// Linux/Windows definitions branch on SoundMode internally; the
+// macOS variants simply route the SoundMode == 5 case through the
+// Qt path in QtSoundModem.cpp and treat other modes as no-ops or
+// non-fatal failures (they cannot occur at runtime because
+// SoundMode is forced to 5).
+
+extern unsigned short * sendSamplestoQSound(unsigned short * buf, int n);
+extern void QtSoundInit(void);
+extern void closeQSound(void);
+extern unsigned short * DMABuffer;
+extern unsigned short QtDMABuffer[8192];
+extern int Number;
+extern int SoundIsPlaying;
+
+short * SendtoCard(short * buf, int n)
+{
+	if (SoundMode == 5)
+	{
+		sendSamplestoQSound((unsigned short *)buf, n);
+		return buf;
+	}
+	// Other SoundModes are not built on macOS.
+	return buf;
+}
+
+short * SoundInit(void)
+{
+	// Match Linux/Windows semantics: ALWAYS reset DMABuffer to the
+	// soundcard buffer. Modulate.c::initFilter repoints DMABuffer at
+	// ARDOPTXBuffer during encoding; SMMain.c relies on SoundInit()
+	// to switch it back before ARDOPSendToCard, otherwise that
+	// function reads and writes the same buffer and TX corrupts.
+	DMABuffer = QtDMABuffer;
+	return (short *)QtDMABuffer;
+}
+
+void SoundFlush(void)
+{
+	// End-of-frame flush. SMMain.c accumulates samples into
+	// DMABuffer up to SendSize and pushes a full chunk via
+	// SendtoCard; the trailing fractional buffer (Number samples
+	// < SendSize) is the caller's responsibility to drain. Push it
+	// here, then block until QAudioSink reports drained so PTT
+	// can drop without truncating TX audio.
+
+	if (SoundMode != 5)
+		return;
+
+	if (Number > 0)
+	{
+		SendtoCard((short *)DMABuffer, Number);
+		Number = 0;
+	}
+
+	// Wait for QAudioSink to reach IdleState. The
+	// audioOutStateChanged slot in QtSoundModem.cpp clears
+	// SoundIsPlaying on IdleState. 5 s is a generous bound — even
+	// a 1200-sample frame at 12 kHz drains in well under 1 s.
+	unsigned int started = getTicks();
+	while (SoundIsPlaying && (getTicks() - started) < 5000)
+		usleep(10000); // 10 ms
+
+	// If we hit the timeout (sink torn down by hot-unplug, or
+	// IdleState never delivered for some other reason) clear the
+	// flag explicitly so DoTX / ProcessNewSamples don't wedge.
+	SoundIsPlaying = 0;
+}
+
+extern int nonGUIMode;
+
+int InitSound(BOOL Report)
+{
+	(void)Report;
+	if (SoundMode == 5)
+	{
+		// QtSoundInit() owns the real init, called from the
+		// QtSoundModem widget ctor. In --nogui mode main.cpp
+		// never constructs the widget, so the Qt audio backend
+		// never starts and capture/playback would silently fail.
+		// Refuse and tell the user.
+		if (nonGUIMode)
+		{
+			Debugprintf("QtSoundModem: --nogui mode is not supported on "
+				"macOS — Qt audio is the only working backend and it "
+				"requires the GUI widget. Run without --nogui or use a "
+				"Linux/Windows build for headless operation.");
+			return FALSE;
+		}
+		return TRUE;
+	}
+	// No other backend exists on macOS.
+	return FALSE;
+}
+
+unsigned int getTicks(void)
+{
+	// Absolute monotonic milliseconds, truncated to 32 bits.
+	// Wraps after ~49 days; callers compute deltas, so wrap is
+	// benign. No first-call init race.
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	return (unsigned int)(now.tv_sec * 1000 + now.tv_nsec / 1000000);
+}
+
+void printtick(char * msg)
+{
+	static unsigned int last = 0;
+	unsigned int now = getTicks();
+	Debugprintf("%s %u", msg ? msg : "", now - last);
+	last = now;
+}
+
+void PollReceivedSamples(void)
+{
+	// SMMain.c::MainLoop calls this in the SoundMode != 5 branch;
+	// the SoundMode == 5 branch routes to PollQSound directly.
+	// Empty stub so the symbol resolves; runtime path never reaches
+	// here while SoundMode is forced to 5.
+}
+
+int initPulse(void)
+{
+	// PulseAudio is not built on macOS.
+	return FALSE;
+}
