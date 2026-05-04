@@ -686,17 +686,26 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	setupMenu = ui.menuBar->addMenu(tr("Settings"));
 
 	actDevices = new QAction("Setup Devices", this);
+	// Qt's macOS heuristic auto-moves QActions whose title contains
+	// "setup", "settings", "preferences", "options", "config",
+	// "about" or "quit" into the Apple-style application menu's
+	// Preferences/About/Quit slots — invisible to users who expect
+	// them under the Settings menu where the code added them.
+	// Force NoRole on every action that would otherwise be stolen.
+	actDevices->setMenuRole(QAction::NoRole);
 	setupMenu->addAction(actDevices);
 
 	connect(actDevices, SIGNAL(triggered()), this, SLOT(clickedSlot()));
 	actDevices->setObjectName("actDevices");
 	actModems = new QAction("Setup Modems", this);
+	actModems->setMenuRole(QAction::NoRole);
 	actModems->setObjectName("actModems");
 	setupMenu->addAction(actModems);
 
 	connect(actModems, SIGNAL(triggered()), this, SLOT(clickedSlot()));
 
 	actFont = new QAction("Setup Font", this);
+	actFont->setMenuRole(QAction::NoRole);
 	actFont->setObjectName("actFont");
 	setupMenu->addAction(actFont);
 
@@ -712,12 +721,17 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	actWaterfall2 = setupMenuLine(viewMenu, (char *)"Second Waterfall", this, Secondwaterfall);
 
 	actCalib = ui.menuBar->addAction("&Calibration");
+	actCalib->setMenuRole(QAction::NoRole);
 	connect(actCalib, SIGNAL(triggered()), this, SLOT(doCalibrate()));
 
 	actRestartWF = ui.menuBar->addAction("Restart Waterfall");
+	actRestartWF->setMenuRole(QAction::NoRole);
 	connect(actRestartWF, SIGNAL(triggered()), this, SLOT(doRestartWF()));
 
 	actAbout = ui.menuBar->addAction("&About");
+	// About is fine to keep its default AboutRole — that's the
+	// macOS-native behaviour ("About QtSoundModem" appears under
+	// the app menu, where users expect it).
 	connect(actAbout, SIGNAL(triggered()), this, SLOT(doAbout()));
 
 	RXLevel = new QImage(150, 10, QImage::Format_RGB32);
