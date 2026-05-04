@@ -81,7 +81,21 @@ extern QFont Font;
 extern int RHPPort;
 extern bool RHPServ;
 
-QSettings* settings = new QSettings("QtSoundModem.ini", QSettings::IniFormat);
+// Lazy accessor instead of a file-scope `new QSettings(...)`. Static
+// init runs before main(), but on macOS main() chdirs into
+// ~/Library/Application Support/.../QtSoundModem before any settings
+// access (otherwise a Finder-launched .app gets cwd=/ and AccessError
+// fires). QSettings(IniFormat, relativePath) resolves the absolute
+// path at construction, so a global initialised at static-init time
+// would be locked to the pre-chdir cwd and getAX25Param/saveAX25Param
+// would silently read/write a different file from getSettings/saveSettings.
+static QSettings * settings = nullptr;
+static QSettings * getSettingsPtr()
+{
+	if (!settings)
+		settings = new QSettings("QtSoundModem.ini", QSettings::IniFormat);
+	return settings;
+}
 
 // This makes geting settings for more channels easier
 
@@ -95,7 +109,7 @@ QVariant getAX25Param(const char * key, QVariant Default)
 	QVariant Q;
 	QByteArray x;
 	sprintf(fullKey, "%s/%s", Prefix, key);
-	Q = settings->value(fullKey, Default);
+	Q = getSettingsPtr()->value(fullKey, Default);
 	x = Q.toString().toUtf8();
 
 	return Q;
@@ -406,7 +420,7 @@ void saveAX25Param(const char * key, QVariant Value)
 
 	sprintf(fullKey, "%s/%s", Prefix, key);
 
-	settings->setValue(fullKey, Value);
+	getSettingsPtr()->setValue(fullKey, Value);
 }
 
 // Qt 6 dropped the implicit char*->QVariant conversion. Overload for
