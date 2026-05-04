@@ -4418,10 +4418,31 @@ void QtSoundModem::StartWatchdog()
 	 // streams down on hot-unplug, leaving these pointers nulled.
 	 // The Devices dialog calls closeQSound() before initializeAudio*
 	 // for the replacement device, so the null path is normal flow.
+	 //
+	 // Mirror onAudioDevicesChanged's disconnect+stop+deleteLater+null
+	 // teardown. Without this, deviceaccept's subsequent call to
+	 // initializeAudio{In,Out} for the new device leaks the previous
+	 // QAudioSource/Sink (parented to `this`, so they survive until
+	 // window destruction) and a queued stateChanged signal could fire
+	 // on the about-to-be-replaced source.
 	 if (m_audioInput)
+	 {
+		 disconnect(m_audioInput, &QAudioSource::stateChanged,
+			 this, &QtSoundModem::audioInStateChanged);
 		 m_audioInput->stop();
+		 in = nullptr;
+		 m_audioInput->deleteLater();
+		 m_audioInput = nullptr;
+	 }
 	 if (m_audioOutput)
+	 {
+		 disconnect(m_audioOutput, &QAudioSink::stateChanged,
+			 this, &QtSoundModem::audioOutStateChanged);
 		 m_audioOutput->stop();
+		 out = nullptr;
+		 m_audioOutput->deleteLater();
+		 m_audioOutput = nullptr;
+	 }
  }
 
  extern "C" void txSleep(int mS);
