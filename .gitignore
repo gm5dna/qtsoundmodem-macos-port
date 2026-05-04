@@ -1,0 +1,46 @@
+# CMake build trees
+build/
+build-*/
+cmake-build-*/
+
+# qmake artefacts
+Makefile
+Makefile.*
+.qmake.stash
+.qmake.cache
+*.pro.user
+*.pro.user.*
+*.pro~
+*.pri~
+
+# Qt MOC / UIC / RCC generated files (when built in tree)
+moc_*.cpp
+moc_*.h
+ui_*.h
+qrc_*.cpp
+
+# Qt Creator legacy build output dirs upstream tracked by accident
+debug/
+release/
+
+# Compiled objects and binaries
+*.o
+*.obj
+*.a
+*.so
+*.so.*
+*.dylib
+
+# macOS bundles emitted by the build
+*.app/
+*.dSYM/
+
+# Tooling
+compile_commands.json
+.cache/
+.vscode/
+.idea/
+
+# OS metadata
+.DS_Store
+Thumbs.db
