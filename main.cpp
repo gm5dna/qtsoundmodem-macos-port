@@ -33,6 +33,19 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 
 extern "C" int nonGUIMode;
 
+// Set by --decode-wav <path> on the command line. NULL means normal
+// audio path; non-NULL means the wav harness will run after worker
+// init and the process will exit when the wav is exhausted.
+extern "C" char * g_wavInputPath = NULL;
+extern "C" void debugDecodeWav(const char * path);
+
+// Set by --dump-input <path>. When non-NULL, PollQSound additionally
+// writes its captured samples to this WAV file (12 kHz stereo Int16).
+// Lets us compare what Qt is actually delivering against the working
+// reference wav. The file is written incrementally; the WAV header's
+// data-size field is patched up at exit (or left zero on a kill).
+extern "C" char * g_dumpInputPath = NULL;
+
 extern void getSettings();
 extern void saveSettings();
 extern int Closing;
@@ -53,6 +66,22 @@ int main(int argc, char *argv[])
 
 	if (argc > 1 && strcmp(argv[1], "nogui") == 0)
 		nonGUIMode = 1;
+
+	// --decode-wav <path>: bypass Qt audio, feed the WAV directly
+	// into the modem, exit when done. Implies --nogui.
+	// --dump-input <path>: capture live Qt audio into a WAV.
+	for (int i = 1; i < argc - 1; i++)
+	{
+		if (strcmp(argv[i], "--decode-wav") == 0)
+		{
+			g_wavInputPath = argv[i + 1];
+			nonGUIMode = 1;
+		}
+		if (strcmp(argv[i], "--dump-input") == 0)
+		{
+			g_dumpInputPath = argv[i + 1];
+		}
+	}
 
 	if (nonGUIMode)
 		sprintf(Title, "QtSoundModem Version %s Running in non-GUI Mode", VersionString);

@@ -343,6 +343,16 @@ extern "C" void put_frame(int snd_ch, string * frame, char * code, int  tx, int 
 		Msg[Len] = 0;
 	}
 
+	// Echo every frame to stderr so the --decode-wav harness (and
+	// anyone running from a terminal) can see decodes without the
+	// GUI. The trailing \r in Msg is intentional for the trace pane;
+	// strip it from the stderr line for readability.
+	int stderrLen = Len;
+	while (stderrLen > 0 && (Msg[stderrLen - 1] == '\r' || Msg[stderrLen - 1] == '\n'))
+		stderrLen--;
+	fprintf(stderr, "DECODED [%s] %.*s\n", tx ? "TX" : "RX", stderrLen, Msg);
+	fflush(stderr);
+
 	emit t->sendtoTrace(Msg, tx);
 }
 
@@ -4302,35 +4312,64 @@ void QtSoundModem::StartWatchdog()
  // for the Qt5→Qt6 migration. Surface the mismatch loudly via
  // Debugprintf so it lands in the trace pane.
 
+ // Captured input rate. Set during initializeAudioIn. PollQSound
+ // decimates to 12 kHz before feeding the modem.
+ int g_audioInputRate = 12000;
+ int g_audioInputDecim = 1;
+
  void QtSoundModem::initializeAudioIn(const QAudioDevice &deviceInfo)
  {
 	 // Qt 6 dropped QAudioFormat::setSampleSize / setCodec / setByteOrder /
 	 // setSampleType. Codec is always PCM, byte order is native, and sample
 	 // type + size collapse into a single SampleFormat enum.
+	 //
+	 // Rate selection: ask for 48 kHz first. CoreAudio's auto-resampler
+	 // (when we ask for 12 kHz on a 48 kHz BlackHole) preserves levels
+	 // and spectrum but mangles bit-level timing enough to break AFSK
+	 // demod. Asking for the device's native 48 kHz and decimating
+	 // ourselves with a deterministic filter avoids the SRC entirely.
+	 // Fall back to 12 kHz only if 48 kHz isn't supported.
 
 	 QAudioFormat format;
-	 format.setSampleRate(12000);
 	 format.setChannelCount(2);
 	 format.setSampleFormat(QAudioFormat::Int16);
 
-	 qDebug() << "Opening Input Device " << deviceInfo.description();
-
-	 if (!deviceInfo.isFormatSupported(format))
+	 // Prefer integer-decimation rates: 48 kHz (×4), 24 kHz (×2),
+	 // 12 kHz (×1).
+	 const int candidateRates[] = { 48000, 24000, 12000 };
+	 g_audioInputRate = 0;
+	 for (int candidate : candidateRates)
+	 {
+		 format.setSampleRate(candidate);
+		 if (deviceInfo.isFormatSupported(format))
+		 {
+			 g_audioInputRate = candidate;
+			 break;
+		 }
+	 }
+	 if (g_audioInputRate == 0)
 	 {
 		 format = deviceInfo.preferredFormat();
-		 Debugprintf("WARNING: input device does not support 12 kHz/stereo/Int16; "
-			 "falling back to %d Hz / %d ch / sample-format %d. Modem decode "
-			 "will degrade until a future commit adds resampling.",
+		 g_audioInputRate = format.sampleRate();
+		 Debugprintf("WARNING: input device does not support 12/24/48 kHz "
+			 "stereo Int16; falling back to %d Hz / %d ch / sample-format %d. "
+			 "Modem decode will degrade.",
 			 format.sampleRate(), format.channelCount(),
 			 (int)format.sampleFormat());
 	 }
+	 g_audioInputDecim = g_audioInputRate / 12000;
+	 if (g_audioInputDecim < 1) g_audioInputDecim = 1;
 
-	 qDebug() << "Sample Rate" << format.sampleRate();
+	 qDebug() << "Opening Input Device " << deviceInfo.description();
+	 qDebug() << "Sample Rate" << g_audioInputRate
+		 << "(decimation factor" << g_audioInputDecim << "to 12 kHz)";
 
 	 m_audioInput = new QAudioSource(deviceInfo, format, this);
 	 connect(m_audioInput, &QAudioSource::stateChanged, this, &QtSoundModem::audioInStateChanged);
 
-	 m_audioInput->setBufferSize(16384);
+	 // Buffer size scales with rate so PollQSound still gets ~340 ms
+	 // of headroom before overrun.
+	 m_audioInput->setBufferSize(16384 * g_audioInputDecim);
 	 in = m_audioInput->start();
  }
  void QtSoundModem::initializeAudioOut(const QAudioDevice &deviceInfo)
@@ -4445,9 +4484,82 @@ extern "C" void ProcessNewSamples(short * Samples, int nSamples);
 static int minL = 0, maxL = 0, minR = 0, maxR = 0, lastlevelGUI = 0, lastlevelreport = 0;
 
 
-char Buffer[16384];
+// Buffer scales with decimation: at 48 kHz we need 4× the bytes
+// per output chunk. Size to hold ~64 KiB of the highest input rate.
+char Buffer[65536];
 
 int BufferLen = 0;
+
+extern int g_audioInputRate;
+extern int g_audioInputDecim;
+
+#if defined(Q_OS_MACOS)
+// --dump-input <path> support: write the captured Qt audio to a
+// WAV file so we can decode-test it against the same modem code via
+// --decode-wav. WAV format: 12 kHz, 2 channels, Int16, little-endian.
+extern "C" char * g_dumpInputPath;
+static FILE * s_dumpFile = nullptr;
+static long s_dumpDataBytes = 0;
+
+static void dumpInputOpen()
+{
+	if (s_dumpFile || !g_dumpInputPath) return;
+	s_dumpFile = fopen(g_dumpInputPath, "wb");
+	if (!s_dumpFile) {
+		Debugprintf("dump-input: open %s failed", g_dumpInputPath);
+		return;
+	}
+	// Canonical 44-byte WAV header. Chunk sizes patched at close.
+	unsigned char hdr[44] = {
+		'R','I','F','F', 0,0,0,0,
+		'W','A','V','E', 'f','m','t',' ',
+		16,0,0,0,           // fmt chunk size
+		1,0,                // PCM
+		2,0,                // 2 channels
+		(unsigned char)(12000 & 0xFF), (unsigned char)((12000>>8)&0xFF),
+		(unsigned char)((12000>>16)&0xFF), (unsigned char)((12000>>24)&0xFF),
+		(unsigned char)(48000 & 0xFF), (unsigned char)((48000>>8)&0xFF),
+		(unsigned char)((48000>>16)&0xFF), (unsigned char)((48000>>24)&0xFF),
+		4,0,                // block align (2ch * 2byte)
+		16,0,               // bits per sample
+		'd','a','t','a', 0,0,0,0
+	};
+	fwrite(hdr, 1, 44, s_dumpFile);
+	s_dumpDataBytes = 0;
+	Debugprintf("dump-input: writing to %s", g_dumpInputPath);
+}
+
+static void dumpInputWrite(const void * data, size_t bytes)
+{
+	if (!s_dumpFile) return;
+	fwrite(data, 1, bytes, s_dumpFile);
+	s_dumpDataBytes += bytes;
+}
+
+extern "C" void dumpInputClose()
+{
+	if (!s_dumpFile) return;
+	long fileSize = 36 + s_dumpDataBytes;
+	fseek(s_dumpFile, 4, SEEK_SET);
+	unsigned char b[4] = {
+		(unsigned char)(fileSize & 0xFF),
+		(unsigned char)((fileSize >> 8) & 0xFF),
+		(unsigned char)((fileSize >> 16) & 0xFF),
+		(unsigned char)((fileSize >> 24) & 0xFF)
+	};
+	fwrite(b, 1, 4, s_dumpFile);
+	fseek(s_dumpFile, 40, SEEK_SET);
+	b[0] = (unsigned char)(s_dumpDataBytes & 0xFF);
+	b[1] = (unsigned char)((s_dumpDataBytes >> 8) & 0xFF);
+	b[2] = (unsigned char)((s_dumpDataBytes >> 16) & 0xFF);
+	b[3] = (unsigned char)((s_dumpDataBytes >> 24) & 0xFF);
+	fwrite(b, 1, 4, s_dumpFile);
+	fclose(s_dumpFile);
+	s_dumpFile = nullptr;
+	Debugprintf("dump-input: closed, %ld bytes data (%.2f s)",
+		s_dumpDataBytes, (double)s_dumpDataBytes / 48000.0);
+}
+#endif
 
 extern "C" void PollQSound()
 {
@@ -4465,63 +4577,82 @@ extern "C" void PollQSound()
 	if (in == nullptr)
 		return;
 
-	int len = 0;
+	// Each output chunk = 512 stereo Int16 frames at 12 kHz =
+	// 2048 bytes. Input chunk scales by decimation:
+	//   decim=1 (12 kHz):  2048 bytes
+	//   decim=2 (24 kHz):  4096 bytes
+	//   decim=4 (48 kHz):  8192 bytes
+	const int decim = g_audioInputDecim;
+	const int outChunkBytes = 2048;
+	const int inChunkBytes = outChunkBytes * decim;
 
-	int size = kAudioPeriodBytes;
+	int size = kAudioPeriodBytes * decim;
+	int len = m_audioInput->bytesAvailable();
 
-	// Modem expects 512 byte blocks so do partial reads via kAudioPeriodBytes.
-
-	len = m_audioInput->bytesAvailable();
+	if (BufferLen + size > (int)sizeof(Buffer))
+		size = (int)sizeof(Buffer) - BufferLen;
 
 	int x = in->read(&Buffer[BufferLen], size);
 
-	if (len > 16384)
+#if defined(Q_OS_MACOS)
+	if (g_dumpInputPath && x > 0)
+	{
+		dumpInputOpen();
+		dumpInputWrite(&Buffer[BufferLen], x);
+	}
+#endif
+
+	if (len > 16384 * decim)
+	{
+		// Backlog — let the buffer drain on subsequent calls. Accept
+		// the bytes we just read so they're not lost.
+		BufferLen += x;
 		return;
+	}
 
 	BufferLen += x;
 
-	while (BufferLen > 2048)
+	short decimated[1024];  // 512 stereo frames
+
+	while (BufferLen >= inChunkBytes)
 	{
+		short * src = (short *)Buffer;
+		short * dst = decimated;
 
-		// ALthough we said samples were signed ints, they appear to be returned as signed shorts, so samples available is half bytesReady()
-
-		// Process 512 samples, 2 bytes each
-
-		short * ptr;
-		int i;
-
-		ptr = (short *)Buffer;
-
-		for (i = 0; i < ReceiveSize; i++)
+		// Decimate input chunk to 512 stereo frames at 12 kHz with a
+		// boxcar low-pass (averaging `decim` consecutive frames).
+		// Crude antialias but sufficient for 1200/2200 Hz AFSK whose
+		// energy sits well below 12 kHz Nyquist.
+		for (int i = 0; i < 512; i++)
 		{
-			if (*(ptr) < minL)
-				minL = *ptr;
-			else if (*(ptr) > maxL)
-				maxL = *ptr;
+			int sumL = 0, sumR = 0;
+			short * frame = src + (i * decim) * 2;
+			for (int k = 0; k < decim; k++)
+			{
+				sumL += frame[2 * k];
+				sumR += frame[2 * k + 1];
+			}
+			short outL = (short)(sumL / decim);
+			short outR = (short)(sumR / decim);
+			*dst++ = outL;
+			*dst++ = outR;
 
-			ptr++;
-
-			if (*(ptr) < minR)
-				minR = *ptr;
-			else if (*(ptr) > maxR)
-				maxR = *ptr;
-			ptr++;
+			if (outL < minL) minL = outL;
+			else if (outL > maxL) maxL = outL;
+			if (outR < minR) minR = outR;
+			else if (outR > maxR) maxR = outR;
 		}
 
-		CurrentLevel = ((maxL - minL) * 75) / 32768;	// Scale to 150 max
-		CurrentLevelR = ((maxR - minR) * 75) / 32768;	// Scale to 150 max
+		CurrentLevel  = ((maxL - minL) * 75) / 32768;
+		CurrentLevelR = ((maxR - minR) * 75) / 32768;
 
-		if ((Now - lastlevelGUI) > 2000)	// 2 Secs
+		if ((Now - lastlevelGUI) > 2000)
 		{
-			//			if (WaterfallActive == 0 && SpectrumActive == 0)				// Don't need to send as included in Waterfall Line
-			//				SendtoGUI('L', &CurrentLevel, 1);	// Signal Level
-
 			lastlevelGUI = Now;
 
-			if ((Now - lastlevelreport) > 60000)	// 60 Secs
+			if ((Now - lastlevelreport) > 60000)
 			{
 				lastlevelreport = Now;
-
 				if (UsingBothChannels)
 					Debugprintf("Input peaks L= %d, %d, R= %d, %d", minL, maxL, minR, maxR);
 				else
@@ -4530,14 +4661,10 @@ extern "C" void PollQSound()
 			minL = maxL = minR = maxR = 0;
 		}
 
-		//		debugprintf(LOGDEBUG, "Process %d %d", inIndex, inheader[inIndex].dwBytesRecorded/2);
-		//		if (Capturing && Loopback == FALSE)
+		ProcessNewSamples(decimated, 512);
 
-		ProcessNewSamples((short *)Buffer, 512);
-
-		BufferLen -= 2048;
-
-		memmove(Buffer, Buffer + 2048, BufferLen);
+		BufferLen -= inChunkBytes;
+		memmove(Buffer, Buffer + inChunkBytes, BufferLen);
 	}
 }
 
