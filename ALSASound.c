@@ -137,8 +137,8 @@ extern char LogDir[256];
 extern BOOL Loopback;
 //BOOL Loopback = TRUE;
 
-char CaptureDevice[80] = "plughw:0,0";
-char PlaybackDevice[80] = "plughw:0,0";
+char CaptureDevice[256] = "plughw:0,0";
+char PlaybackDevice[256] = "plughw:0,0";
 
 char * CaptureDevices = CaptureDevice;
 char * PlaybackDevices = CaptureDevice;

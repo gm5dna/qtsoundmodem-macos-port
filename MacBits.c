@@ -381,9 +381,17 @@ void CloseCOMPort(int fd)
 // Default device names are empty strings — QtSoundModem.cpp falls
 // back to QMediaDevices::defaultAudioInput()/Output() when the
 // configured name does not match an enumerated device.
+//
+// Buffer width is 256 bytes, matching CaptureNames / PlaybackNames
+// rows. CoreAudio QAudioDevice::description() values can exceed 79
+// UTF-8 bytes (some USB audio interfaces with long manufacturer
+// prefixes), so the historical 80-byte limit allowed strcpy
+// overflow. UZ7HOStuff.h, ALSASound.c and Waveout.c are widened to
+// match — Linux/Windows definitions go from [80] to [256], a
+// strict-superset change that costs ~352 bytes of bss per platform.
 
-char CaptureDevice[80] = "";
-char PlaybackDevice[80] = "";
+char CaptureDevice[256] = "";
+char PlaybackDevice[256] = "";
 
 int CaptureCount = 0;
 int PlaybackCount = 0;

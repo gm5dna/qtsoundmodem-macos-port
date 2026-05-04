@@ -1057,8 +1057,8 @@ extern int Capturing;
 
 extern struct TDetector_t  DET[nr_emph + 1][16];
 
-extern char CaptureDevice[80];
-extern char PlaybackDevice[80];
+extern char CaptureDevice[256];
+extern char PlaybackDevice[256];
 
 extern TAX25Port AX25Port[4][port_num];
 
