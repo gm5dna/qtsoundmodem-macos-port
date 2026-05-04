@@ -52,6 +52,11 @@ extern workerThread *t;
 extern mynet m1;
 extern serialThread *serial;
 
+#if defined(__APPLE__)
+extern "C" char * g_wavInputPath;
+extern "C" void debugDecodeWav(const char * path);
+#endif
+
 QString Response;
 
 extern int MgmtPort;
@@ -938,6 +943,18 @@ void workerThread::run()
 	init_speed(3);
 
 	//	emit t->openSockets();
+
+#if defined(__APPLE__)
+	// --decode-wav harness: feed the WAV directly into ProcessNewSamples
+	// and exit when done. Bypasses MainLoop's PollQSound entirely.
+	if (g_wavInputPath != NULL)
+	{
+		qDebug() << "Decode-wav harness: feeding" << g_wavInputPath;
+		debugDecodeWav(g_wavInputPath);
+		qDebug() << "Decode-wav harness: done, exiting";
+		Closing = 1;
+	}
+#endif
 
 	while (Closing == 0)
 	{

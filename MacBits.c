@@ -491,12 +491,18 @@ void SoundFlush(void)
 }
 
 extern int nonGUIMode;
+extern char * g_wavInputPath;  // set by main.cpp from --decode-wav <path>
 
 int InitSound(BOOL Report)
 {
 	(void)Report;
 	if (SoundMode == 5)
 	{
+		// --decode-wav harness uses nogui + bypasses Qt audio; allow
+		// init to succeed so the worker loop runs.
+		if (g_wavInputPath != NULL)
+			return TRUE;
+
 		// QtSoundInit() owns the real init, called from the
 		// QtSoundModem widget ctor. In --nogui mode main.cpp
 		// never constructs the widget, so the Qt audio backend
@@ -514,6 +520,90 @@ int InitSound(BOOL Report)
 	}
 	// No other backend exists on macOS.
 	return FALSE;
+}
+
+// --decode-wav harness: read 12 kHz mono/stereo 16-bit PCM WAV
+// directly into the modem, bypassing Qt audio entirely. Pre-convert
+// any input with `afconvert -f WAVE -d LEI16@12000 -c 1 in.flac
+// out.wav`. Only handles canonical 44-byte PCM WAV headers — fails
+// loudly on extended headers / wrong rate / wrong bit depth.
+extern void ProcessNewSamples(short * Samples, int nSamples);
+
+void debugDecodeWav(const char * path)
+{
+	FILE * f = fopen(path, "rb");
+	if (!f)
+	{
+		Debugprintf("debugDecodeWav: open %s failed: %s",
+			path, strerror(errno));
+		return;
+	}
+
+	unsigned char hdr[44];
+	if (fread(hdr, 1, 44, f) != 44)
+	{
+		Debugprintf("debugDecodeWav: short header read");
+		fclose(f);
+		return;
+	}
+
+	if (memcmp(hdr, "RIFF", 4) != 0 || memcmp(hdr + 8, "WAVE", 4) != 0)
+	{
+		Debugprintf("debugDecodeWav: not a RIFF/WAVE file");
+		fclose(f);
+		return;
+	}
+
+	short numCh    = (short)(hdr[22] | (hdr[23] << 8));
+	int sampleRate = hdr[24] | (hdr[25] << 8) | (hdr[26] << 16) | (hdr[27] << 24);
+	short bits     = (short)(hdr[34] | (hdr[35] << 8));
+
+	Debugprintf("debugDecodeWav: %s — %d ch, %d Hz, %d-bit",
+		path, numCh, sampleRate, bits);
+
+	if (sampleRate != 12000 || bits != 16 || (numCh != 1 && numCh != 2))
+	{
+		Debugprintf("debugDecodeWav: expected 12000 Hz / 16-bit / 1 or 2 ch. "
+			"Pre-convert with: afconvert -f WAVE -d LEI16@12000 -c 1 in.* out.wav");
+		fclose(f);
+		return;
+	}
+
+	// Process in 512-stereo-sample chunks (matches PollQSound).
+	short stereo[1024];
+	int totalFrames = 0;
+
+	if (numCh == 1)
+	{
+		short mono[512];
+		while (1)
+		{
+			size_t n = fread(mono, sizeof(short), 512, f);
+			if (n == 0) break;
+			for (size_t i = 0; i < n; i++)
+			{
+				stereo[2 * i]     = mono[i];
+				stereo[2 * i + 1] = mono[i];
+			}
+			ProcessNewSamples(stereo, (int)n);
+			totalFrames += (int)n;
+		}
+	}
+	else
+	{
+		while (1)
+		{
+			// 512 stereo frames = 1024 shorts = 2048 bytes
+			size_t n = fread(stereo, sizeof(short) * 2, 512, f);
+			if (n == 0) break;
+			ProcessNewSamples(stereo, (int)n);
+			totalFrames += (int)n;
+		}
+	}
+
+	fclose(f);
+	Debugprintf("debugDecodeWav: processed %d sample frames (%.2f s)",
+		totalFrames, (double)totalFrames / sampleRate);
 }
 
 unsigned int getTicks(void)
