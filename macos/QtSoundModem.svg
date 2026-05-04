@@ -1,40 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#1e3a5f"/>
-      <stop offset="100%" stop-color="#0a1628"/>
-    </linearGradient>
-    <linearGradient id="wave" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#7dd3c0"/>
-      <stop offset="50%" stop-color="#a7f3d0"/>
-      <stop offset="100%" stop-color="#7dd3c0"/>
-    </linearGradient>
-  </defs>
+  <!-- Apple-style rounded square, single flat colour -->
+  <rect x="0" y="0" width="1024" height="1024" rx="225" ry="225" fill="#0f2942"/>
 
-  <!-- Apple-style rounded square (squircle approximation) -->
-  <rect x="0" y="0" width="1024" height="1024" rx="225" ry="225" fill="url(#bg)"/>
-
-  <!-- AFSK packet-burst waveform: starts low-freq, transitions to high-freq, back to low. Bell 202 mark/space metaphor. -->
-  <g transform="translate(0, 512)" stroke="url(#wave)" stroke-width="22" fill="none" stroke-linecap="round">
-    <!-- Low frequency (mark, ~1200 Hz feel): 4 cycles -->
-    <path d="M 96 0 Q 144 -120 192 0 T 288 0 T 384 0 T 480 0"/>
-    <!-- High frequency (space, ~2200 Hz feel): 8 cycles -->
-    <path d="M 480 0 Q 504 -100 528 0 T 576 0 T 624 0 T 672 0 T 720 0 T 768 0 T 816 0 T 864 0"/>
-    <!-- Tail back to low -->
-    <path d="M 864 0 Q 912 -120 960 0"/>
+  <!-- Single bold AFSK packet-burst waveform: low frequency → high frequency.
+       One element, thick stroke, posterized graphic feel. -->
+  <g transform="translate(0, 512)" stroke="#5eead4" stroke-width="48"
+     fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- 3 low-freq cycles -->
+    <path d="M 128 0 Q 192 -180 256 0 T 384 0 T 512 0"/>
+    <!-- 6 high-freq cycles -->
+    <path d="M 512 0 Q 544 -160 576 0 T 640 0 T 704 0 T 768 0 T 832 0 T 896 0"/>
   </g>
-
-  <!-- Top accent: small dot pattern hinting at digital data -->
-  <g fill="#a7f3d0" opacity="0.85">
-    <circle cx="320" cy="240" r="14"/>
-    <circle cx="380" cy="240" r="14"/>
-    <circle cx="440" cy="240" r="14"/>
-    <circle cx="540" cy="240" r="14"/>
-    <circle cx="600" cy="240" r="14"/>
-    <circle cx="660" cy="240" r="14"/>
-    <circle cx="720" cy="240" r="14"/>
-  </g>
-
-  <!-- Bottom accent: a centred horizontal indicator line -->
-  <rect x="412" y="800" width="200" height="14" rx="7" ry="7" fill="#7dd3c0" opacity="0.6"/>
 </svg>
