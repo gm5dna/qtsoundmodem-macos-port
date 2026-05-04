@@ -2,18 +2,17 @@ cmake_minimum_required(VERSION 3.16)
 
 # QtSoundModem — macOS-port CMake build.
 #
-# Buildability across the macos-port commit series (this is commit 2 of 6):
-#   commit 2 (this commit): cmake -S . -B build configures cleanly on macOS.
-#                           Compile/link will fail — by design — because:
-#                             * QtSoundModem.{cpp,h} still use Qt 5 Multimedia
-#                               APIs (QAudioDeviceInfo, QAudioInput, ...).
-#                             * Apple has no MacBits.c / hid_mac.c /
-#                               MacPermissions.mm yet, so platform symbols
-#                               (Sleep, stricmp, Debugprintf, platformInit,
-#                               InitSound, CloseSound, GetSoundDevices) are
-#                               unresolved.
+# Buildability across the macos-port commit series (this is commit 4 of 6):
+#   commit 2: cmake configure clean on macOS; compile/link fails by design.
 #   commit 3: tighten LinuxBits.c __ARM_ARCH guard.
-#   commit 4: add MacBits.c (POSIX + logging shims).
+#   commit 4 (this commit): add MacBits.c (Sleep, stricmp, memicmp,
+#                           Debugprintf, txSleep, platformInit). Tightens
+#                           SMMain.c __ARM_ARCH guards so the macOS link
+#                           does not reference Pi GPIO symbols.
+#                           Compile/link still fails — QtSoundModem.{cpp,h}
+#                           use Qt 5 Multimedia APIs and the audio entry
+#                           points (InitSound/CloseSound/GetSoundDevices)
+#                           are unresolved until commits 5–6.
 #   commit 5: migrate Qt Multimedia Qt5 → Qt6 in QtSoundModem.{cpp,h}.
 #   commit 6: add hid_mac.c, MacPermissions.mm, default SoundMode=5 on macOS;
 #             at this point the macOS bundle compiles, links, and runs.
@@ -143,9 +142,10 @@ set(QSM_RESOURCES
 # LinuxBits.c, Waveout.c, hid.c.
 set(QSM_PLATFORM_SOURCES "")
 if(APPLE)
-    # macOS sources land in later commits of the macos-port series:
-    #   commit 4: MacBits.c
-    #   commit 6: hid_mac.c, MacPermissions.mm
+    list(APPEND QSM_PLATFORM_SOURCES
+        MacBits.c
+    )
+    # commit 6 will add hid_mac.c and MacPermissions.mm.
 endif()
 if(UNIX AND NOT APPLE)
     list(APPEND QSM_PLATFORM_SOURCES

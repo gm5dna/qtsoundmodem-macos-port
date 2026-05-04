@@ -1171,7 +1171,7 @@ void OpenPTTPort()
 		{
 			// Initialise GPIO for PTT if available
 
-#ifdef __ARM_ARCH
+#if defined(__linux__) && defined(__ARM_ARCH)
 
 			if (gpioInitialise() == 0)
 			{
@@ -1314,7 +1314,7 @@ void RadioPTT(int snd_ch, BOOL PTTState)
 
 	UpdatePTTStats(snd_ch, PTTState);
 
-#ifdef __ARM_ARCH
+#if defined(__linux__) && defined(__ARM_ARCH)
 	if (useGPIO)
 	{
 		if (DualPTT && modemtoSoundLR[snd_ch] == 1)
