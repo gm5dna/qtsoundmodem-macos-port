@@ -180,6 +180,8 @@ endif()
 
 # Bundle target on macOS, plain executable elsewhere.
 if(APPLE)
+    set(QSM_MACOS_ICON "${CMAKE_SOURCE_DIR}/macos/QtSoundModem.icns")
+
     add_executable(QtSoundModem MACOSX_BUNDLE
         ${QSM_COMMON_SOURCES}
         ${QSM_PLATFORM_SOURCES}
@@ -195,6 +197,23 @@ if(APPLE)
         MACOSX_BUNDLE_BUNDLE_VERSION   "${PROJECT_VERSION}"
         MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
         MACOSX_BUNDLE_COPYRIGHT        "Copyright (C) 2019-2024 UZ7HO, G8BPQ contributors"
+        MACOSX_BUNDLE_ICON_FILE        "QtSoundModem.icns"
+    )
+
+    # Copy the .icns into Contents/Resources/ as a POST_BUILD step
+    # before macdeployqt runs (CMake runs POST_BUILD commands in
+    # declaration order, and macdeployqt.cmake is included below).
+    # Using MACOSX_PACKAGE_LOCATION via set_source_files_properties
+    # copies AFTER POST_BUILD, which leaves the icon outside the
+    # final ad-hoc seal and breaks `codesign --verify`.
+    add_custom_command(TARGET QtSoundModem POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E make_directory
+                "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Resources"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${QSM_MACOS_ICON}"
+                "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Resources/QtSoundModem.icns"
+        COMMENT "Copying QtSoundModem.icns into bundle Resources"
+        VERBATIM
     )
 
     include("${CMAKE_SOURCE_DIR}/cmake/macdeployqt.cmake")

@@ -29,9 +29,16 @@ if(NOT MACDEPLOYQT_EXECUTABLE)
 endif()
 
 add_custom_command(TARGET QtSoundModem POST_BUILD
+    # Clear extended attributes BEFORE macdeployqt runs. macdeployqt's
+    # internal codesign step fails ("detritus not allowed") if xattrs
+    # are present on the freshly-linked executable, halting the build.
+    COMMAND xattr -cr "$<TARGET_BUNDLE_DIR:QtSoundModem>"
+    # Pass -codesign=- so macdeployqt uses ad-hoc signing (we re-sign
+    # after install_name_tool surgery anyway).
     COMMAND "${MACDEPLOYQT_EXECUTABLE}"
             "$<TARGET_BUNDLE_DIR:QtSoundModem>"
             -always-overwrite
+            -codesign=-
     COMMENT "macdeployqt: bundling Qt frameworks into QtSoundModem.app"
     VERBATIM
 )
