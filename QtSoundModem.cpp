@@ -2245,6 +2245,16 @@ void QtSoundModem::doDevices()
 		Dev->ALSA->setChecked(1);
 	else if (SoundMode == 2)
 		Dev->UDP->setChecked(1);
+#elif defined(Q_OS_MACOS)
+	// Qt audio (SoundMode 5) is the only working backend on macOS.
+	// Hide the other radios so the user cannot pick a mode whose
+	// backend is not built; QSOUND stays the only option.
+	Dev->ALSA->setVisible(0);
+	Dev->OSS->setVisible(0);
+	Dev->PULSE->setVisible(0);
+	Dev->UDP->setVisible(0);
+	Dev->onlyMixSnoop->setVisible(0);
+	Dev->QSOUND->setChecked(1);
 #else
 	if (SoundMode == 0)
 	{
@@ -4113,10 +4123,57 @@ void QtSoundModem::StartWatchdog()
 
  extern "C" unsigned short * DMABuffer;
 
- unsigned short QtDMABuffer[4096];
+ // Sized for RUH48/RUH96 modes: SendSize rises to 4096 there and
+ // SampleSink/ARDOPSendToCard pack stereo into DMABuffer, so the
+ // worst-case write index is 2*(SendSize-1)+1 = 8191. Linux and
+ // Windows allocate buffer[N][MaxSendSize*2] = 8192 shorts; match.
+ unsigned short QtDMABuffer[8192];
+
+ #if defined(Q_OS_MACOS)
+ extern "C" int macAudioAuthorisationStatus(void);
+ extern "C" void macRequestAudioAuthorisation(void);
+ #endif
 
  extern "C" void QtSoundModem::QtSoundInit()
  {
+#if defined(Q_OS_MACOS)
+	// Probe microphone authorisation. Without permission, QAudioSource
+	// returns zeros indefinitely and the modem silently fails to
+	// decode. Status codes mirror AVAuthorizationStatus.
+	int authStatus = macAudioAuthorisationStatus();
+	if (authStatus == 0) // NotDetermined
+	{
+		// First run — fire the request. The system prompt is async
+		// and the user might not click Allow before we open the
+		// QAudioSource below; rather than try to re-open the source
+		// from inside the AVFoundation completion block (which would
+		// need careful Qt-thread routing), tell the user to restart
+		// once they've granted. Audio still starts up; if they grant
+		// and don't restart, decode will start working at 5–10 s
+		// when CoreAudio reports the new permission.
+		macRequestAudioAuthorisation();
+		QMessageBox::information(this, tr("Microphone permission required"),
+			tr("QtSoundModem needs microphone access to decode AX.25, "
+			   "ARDOP and IL2P audio. Click Allow on the system prompt, "
+			   "then restart QtSoundModem if decoding does not start "
+			   "within a few seconds."));
+	}
+	else if (authStatus == 1 || authStatus == 2) // Restricted or Denied
+	{
+		// Restricted (1) means policy-blocked (Screen Time, MDM); the
+		// system will not even prompt. The remediation surface is the
+		// same as Denied — open System Settings — so we share the
+		// dialog copy.
+		QMessageBox::warning(this, tr("Microphone permission unavailable"),
+			tr("QtSoundModem cannot capture audio because microphone "
+			   "access is %1. Open System Settings → Privacy & "
+			   "Security → Microphone, enable QtSoundModem, then "
+			   "restart the app. (If the toggle is locked your device "
+			   "may be managed by Screen Time or an MDM profile.)")
+			   .arg(authStatus == 1 ? tr("restricted") : tr("denied")));
+	}
+#endif
+
 	 GetAudioDevices();
 
 	 initializeAudioOut(outDeviceInfo);
@@ -4124,6 +4181,97 @@ void QtSoundModem::StartWatchdog()
 
 	 DMABuffer = QtDMABuffer;
 
+	 // Hot-unplug + system-default change handling. QMediaDevices
+	 // emits audioInputsChanged / audioOutputsChanged when the user
+	 // yanks a USB sound dongle or switches the system default.
+	 if (!m_mediaDevices)
+	 {
+		 m_mediaDevices = new QMediaDevices(this);
+		 connect(m_mediaDevices, &QMediaDevices::audioInputsChanged,
+			 this, &QtSoundModem::onAudioDevicesChanged);
+		 connect(m_mediaDevices, &QMediaDevices::audioOutputsChanged,
+			 this, &QtSoundModem::onAudioDevicesChanged);
+	 }
+ }
+
+ void QtSoundModem::onAudioDevicesChanged()
+ {
+	 // Re-enumerate. Qt 6 does not always emit StoppedState cleanly
+	 // when the underlying device vanishes — depending on the macOS
+	 // backend the QAudioSource can hang in ActiveState producing
+	 // zeros (the silent-zero failure mode). Stop the dead stream
+	 // explicitly and clear the cached IODevice pointers so PollQSound
+	 // and sendSamplestoQSound short-circuit until the user re-picks.
+	 GetAudioDevices();
+
+	 bool inGone = inDeviceInfo.isNull()
+		 || !QMediaDevices::audioInputs().contains(inDeviceInfo);
+	 bool outGone = outDeviceInfo.isNull()
+		 || !QMediaDevices::audioOutputs().contains(outDeviceInfo);
+
+	 if (inGone)
+	 {
+		 if (m_audioInput)
+		 {
+			 // Disconnect the state-change signal before stop() so a
+			 // queued stateChanged delivered after deleteLater() does
+			 // not fire on a freed object.
+			 disconnect(m_audioInput, &QAudioSource::stateChanged,
+				 this, &QtSoundModem::audioInStateChanged);
+			 m_audioInput->stop();
+			 // The QIODevice returned by QAudioSource::start() is no
+			 // longer usable after stop(); null the static cache so
+			 // PollQSound's `if (in == nullptr) return;` fires and
+			 // we don't read through a dangling pointer.
+			 in = nullptr;
+			 m_audioInput->deleteLater();
+			 m_audioInput = nullptr;
+		 }
+		 inDeviceInfo = QAudioDevice();
+	 }
+	 if (outGone)
+	 {
+		 if (m_audioOutput)
+		 {
+			 disconnect(m_audioOutput, &QAudioSink::stateChanged,
+				 this, &QtSoundModem::audioOutStateChanged);
+			 m_audioOutput->stop();
+			 out = nullptr;
+			 m_audioOutput->deleteLater();
+			 m_audioOutput = nullptr;
+		 }
+		 outDeviceInfo = QAudioDevice();
+		 // The audioOutStateChanged → IdleState handler usually
+		 // clears SoundIsPlaying, but a torn-down sink will not
+		 // emit it. Clear here so DoTX's "still playing?" guard
+		 // does not wedge transmit until restart.
+		 extern int SoundIsPlaying;
+		 SoundIsPlaying = 0;
+	 }
+
+	 if (inGone || outGone)
+	 {
+		 Debugprintf("Audio device list changed; active %s%s%s no longer present — stream stopped, re-pick from Devices dialog",
+			 inGone ? "input" : "",
+			 (inGone && outGone) ? " and " : "",
+			 outGone ? "output" : "");
+	 }
+
+	 // Replug-same-device: GetAudioDevices() re-matched the saved
+	 // device descriptions, so inDeviceInfo / outDeviceInfo are
+	 // valid again. If our streams were torn down on a previous
+	 // unplug they're still null — reopen automatically so the user
+	 // does not have to revisit the Devices dialog.
+	 if (!inGone && !m_audioInput && !inDeviceInfo.isNull())
+	 {
+		 Debugprintf("Audio input device returned — reinitialising");
+		 initializeAudioIn(inDeviceInfo);
+	 }
+	 if (!outGone && !m_audioOutput && !outDeviceInfo.isNull())
+	 {
+		 Debugprintf("Audio output device returned — reinitialising");
+		 initializeAudioOut(outDeviceInfo);
+	 }
  }
 
 
@@ -4204,8 +4352,14 @@ void QtSoundModem::StartWatchdog()
 
  void QtSoundModem::closeQSound()
  {
-	 m_audioInput->stop();
-	 m_audioOutput->stop();
+	 // Null-safe: onAudioDevicesChanged() may have already torn the
+	 // streams down on hot-unplug, leaving these pointers nulled.
+	 // The Devices dialog calls closeQSound() before initializeAudio*
+	 // for the replacement device, so the null path is normal flow.
+	 if (m_audioInput)
+		 m_audioInput->stop();
+	 if (m_audioOutput)
+		 m_audioOutput->stop();
  }
 
  extern "C" void txSleep(int mS);
@@ -4219,6 +4373,18 @@ void QtSoundModem::StartWatchdog()
 
  extern "C" unsigned short * sendSamplestoQSound(unsigned short * buf, int n)
  {
+	 // Hot-unplug guard: onAudioDevicesChanged nulls these when the
+	 // active device disappears. The check is repeated inside the
+	 // bytesFree() wait loop below — full thread-safety would need a
+	 // mutex serialising teardown with worker-thread writes, which
+	 // is a wider refactor (the upstream TX path has unsynchronised
+	 // access in many places). The narrower rechecks here reduce
+	 // the crash window from "entire wait" to "single statement";
+	 // a torn-down sink mid-write may still be reached transiently
+	 // and the user should restart the app if TX wedges after a
+	 // hot-unplug during transmit.
+	 if (!m_audioOutput || !out)
+		 return buf;
 
 	 int in = 0;
 	 int space = m_audioOutput->bytesFree();
@@ -4236,10 +4402,15 @@ void QtSoundModem::StartWatchdog()
 	 while (space < n)
 	 {
 		 txSleep(10);
+		 // Recheck after the sleep — another thread may have torn
+		 // down the sink while we were waiting.
+		 if (!m_audioOutput || !out)
+			 return buf;
 		 space = m_audioOutput->bytesFree() / 4;
 		 Debugprintf("Space %d", space);
 	 }
 
+	 if (!out) return buf;
 	 int x = out->write((char *)buf, n * 4);
 
 	 space = m_audioOutput->bytesFree();

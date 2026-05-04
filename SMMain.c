@@ -1026,11 +1026,12 @@ void DecodeCM108(char * ptr)
 {
 	// Called if Device Name or PTT = Param is CM108
 
-#ifdef WIN32
+#if defined(WIN32) || defined(__APPLE__)
 
-	// Next Param is VID and PID - 0xd8c:0x8 or Full device name
-	// On Windows device name is very long and difficult to find, so 
-	//	easier to use VID/PID, but allow device in case more than one needed
+	// Next Param is VID and PID - 0xd8c:0x8 or Full device name.
+	// On Windows / macOS device names are libhidapi paths (long /
+	// opaque), so users normally supply VID/PID and we resolve the
+	// path via hid_enumerate.
 
 	char * next;
 	long VID = 0, PID = 0;
@@ -1236,7 +1237,9 @@ void CM108_set_ptt(int PTTState)
 	if (CM108Device == NULL)
 		return;
 
-#ifdef WIN32
+#if defined(WIN32) || defined(__APPLE__)
+	// macOS has no /dev/hidrawN; libhidapi (Homebrew, IOKit backend)
+	// is the portable path that already exists for Windows.
 	handle = hid_open_path(CM108Device);
 
 	if (!handle) {

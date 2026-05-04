@@ -65,3 +65,37 @@ add_custom_command(TARGET QtSoundModem POST_BUILD
     COMMENT "Embedding ${FFTW3F_NAME} into QtSoundModem.app/Contents/Frameworks"
     VERBATIM
 )
+
+# Same treatment for libhidapi (commit 6 added the dependency for
+# CM108 PTT). Without this the bundle dyld-fails the moment it lands
+# on a Mac without /opt/homebrew/opt/hidapi/. macdeployqt.cmake is
+# included before the APPLE link block in CMakeLists.txt populates
+# HIDAPI_LIBRARY, so we re-find here to avoid first-configure misses.
+find_library(HIDAPI_LIBRARY NAMES hidapi
+    HINTS
+        /opt/homebrew/lib
+        /opt/homebrew/opt/hidapi/lib
+        /usr/local/lib
+        /usr/local/opt/hidapi/lib)
+if(HIDAPI_LIBRARY)
+    get_filename_component(HIDAPI_REAL "${HIDAPI_LIBRARY}" REALPATH)
+    get_filename_component(HIDAPI_NAME "${HIDAPI_REAL}" NAME)
+
+    add_custom_command(TARGET QtSoundModem POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${HIDAPI_REAL}"
+                "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Frameworks/${HIDAPI_NAME}"
+        COMMAND chmod u+w
+                "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Frameworks/${HIDAPI_NAME}"
+        COMMAND install_name_tool -id
+                "@rpath/${HIDAPI_NAME}"
+                "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Frameworks/${HIDAPI_NAME}"
+        COMMAND /bin/bash -c
+                "exe='$<TARGET_FILE:QtSoundModem>'; \
+                 for dep in $(otool -L \"$exe\" | awk 'NR>1 {print $1}' | grep -E '/libhidapi'); do \
+                     install_name_tool -change \"$dep\" '@rpath/${HIDAPI_NAME}' \"$exe\"; \
+                 done"
+        COMMENT "Embedding ${HIDAPI_NAME} into QtSoundModem.app/Contents/Frameworks"
+        VERBATIM
+    )
+endif()

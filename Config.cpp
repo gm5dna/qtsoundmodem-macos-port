@@ -163,6 +163,13 @@ void getSettings()
 	PSKRect = settings->value("PSKWindow").toRect();
 
 	SoundMode = settings->value("Init/SoundMode", 0).toInt();
+#if defined(Q_OS_MACOS)
+	// Qt audio is the only working backend on macOS — ALSA / Pulse /
+	// OSS / Waveout are not built. Force SoundMode = 5 regardless of
+	// the saved value so an INI imported from Linux/Windows still
+	// works. Save path persists 5 from this point on.
+	SoundMode = 5;
+#endif
 	UDPClientPort = settings->value("Init/UDPClientPort", 8888).toInt();
 	UDPServerPort = settings->value("Init/UDPServerPort", 8884).toInt();
 	TXPort = settings->value("Init/TXPort", UDPServerPort).toInt();

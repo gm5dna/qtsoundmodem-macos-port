@@ -49,9 +49,15 @@ if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
     endif()
 endif()
 
+if(APPLE)
+    set(QSM_LANGUAGES C CXX OBJCXX)
+else()
+    set(QSM_LANGUAGES C CXX)
+endif()
+
 project(QtSoundModem
     VERSION 0.0.0.76
-    LANGUAGES C CXX
+    LANGUAGES ${QSM_LANGUAGES}
 )
 
 set(CMAKE_CXX_STANDARD 17)
@@ -160,8 +166,8 @@ set(QSM_PLATFORM_SOURCES "")
 if(APPLE)
     list(APPEND QSM_PLATFORM_SOURCES
         MacBits.c
+        MacPermissions.mm
     )
-    # commit 6 will add hid_mac.c and MacPermissions.mm.
 endif()
 if(UNIX AND NOT APPLE)
     list(APPEND QSM_PLATFORM_SOURCES
@@ -227,4 +233,42 @@ if(UNIX AND NOT APPLE)
         "${ASOUND_LIBRARY}"
         ${CMAKE_DL_LIBS}
     )
+endif()
+
+if(APPLE)
+    # libhidapi (Homebrew) provides the hid_open_path / hid_write /
+    # hid_close / hid_enumerate symbols SMMain.c calls for CM108
+    # PTT. Headers live under /opt/homebrew/include/hidapi/.
+    find_library(HIDAPI_LIBRARY NAMES hidapi
+        HINTS
+            /opt/homebrew/lib
+            /opt/homebrew/opt/hidapi/lib
+            /usr/local/lib
+            /usr/local/opt/hidapi/lib)
+    find_path(HIDAPI_INCLUDE_DIR NAMES hidapi.h
+        PATH_SUFFIXES hidapi
+        HINTS
+            /opt/homebrew/include
+            /opt/homebrew/opt/hidapi/include
+            /usr/local/include
+            /usr/local/opt/hidapi/include)
+    if(NOT HIDAPI_LIBRARY OR NOT HIDAPI_INCLUDE_DIR)
+        message(FATAL_ERROR "hidapi not found. brew install hidapi.")
+    endif()
+
+    target_include_directories(QtSoundModem PRIVATE
+        "${HIDAPI_INCLUDE_DIR}")
+
+    # AVFoundation is needed by MacPermissions.mm (microphone-permission
+    # probe). CoreFoundation is pulled in transitively but list it for
+    # documentation. AppKit/IOKit/Metal already arrive via Qt.
+    find_library(AVFOUNDATION_FRAMEWORK AVFoundation REQUIRED)
+    find_library(COREMEDIA_FRAMEWORK   CoreMedia    REQUIRED)
+    find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+
+    target_link_libraries(QtSoundModem PRIVATE
+        "${HIDAPI_LIBRARY}"
+        "${AVFOUNDATION_FRAMEWORK}"
+        "${COREMEDIA_FRAMEWORK}"
+        "${COREFOUNDATION_FRAMEWORK}")
 endif()
