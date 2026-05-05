@@ -1,0 +1,25 @@
+# Regression baseline for the --decode-wav harness. Tab-separated:
+# filename<TAB>min-decoded-packet-count.
+# The runner accepts >= the threshold; FAILs if fewer packets decode.
+#
+# Baselines are placeholders. To capture meaningful baselines:
+#   1. Configure the modems in your live ~/Library/Application Support/
+#      gm5dna/QtSoundModem/QtSoundModem.ini to enable the speeds the
+#      test files use (AFSK 1200, RUH96, 300-baud + IL2P — see the
+#      header comment in run-regression.sh).
+#   2. Run test-files/run-regression.sh once and note the decoded
+#      counts.
+#   3. Replace the 0s below with those counts (or a slightly lower
+#      number to allow for run-to-run jitter).
+#   4. Commit the updated baselines.
+#
+# After Commit C (FIR antialias filter) lands, every line below
+# must hold-or-improve — the FIR's purpose is to widen the gap on
+# the 9600/300 files where boxcar aliasing currently bites.
+#
+# WA8LMF Mic-E AFSK 1200: 100 packets is the ground-truth count
+# from the test CD (file is "100 Mic-E Bursts DE-Emphasized");
+# baseline-update the others against your boxcar measurement.
+02_100-Mic-E-Bursts-DE-emphasized.flac	0
+g3ruh_9600_5min.wav	0
+il2p_300_5min.wav	0

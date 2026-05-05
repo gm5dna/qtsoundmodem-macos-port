@@ -4743,6 +4743,37 @@ extern "C" void dumpInputClose()
 }
 #endif
 
+// Decimate one chunk of interleaved stereo Int16 input down by integer
+// factor `decim`, producing 512 stereo output frames. Input must be
+// 512 * decim stereo frames. Currently a boxcar moving average
+// (sufficient for AFSK1200 below 1.5 kHz baseband but lossy for the
+// upper baseband, hence the README "Known limitations" entry); will
+// be replaced by a windowed-sinc FIR in the next commit. Both
+// PollQSound (live audio) and debugDecodeWav (--decode-wav harness)
+// route through this so the harness exercises the same DSP path the
+// live build does.
+extern "C" void decimateAudioToModem(const short * src, int decim, short * dst)
+{
+	if (decim <= 1)
+	{
+		// Fast path: 12 kHz native, no decimation. Straight stereo memcpy.
+		memcpy(dst, src, 512 * 2 * sizeof(short));
+		return;
+	}
+	for (int i = 0; i < 512; i++)
+	{
+		int sumL = 0, sumR = 0;
+		const short * frame = src + (i * decim) * 2;
+		for (int k = 0; k < decim; k++)
+		{
+			sumL += frame[2 * k];
+			sumR += frame[2 * k + 1];
+		}
+		dst[2 * i]     = (short)(sumL / decim);
+		dst[2 * i + 1] = (short)(sumR / decim);
+	}
+}
+
 extern "C" void PollQSound()
 {
 	// Process any captured samples
@@ -4796,26 +4827,16 @@ extern "C" void PollQSound()
 	while (BufferLen >= inChunkBytes)
 	{
 		short * src = (short *)Buffer;
-		short * dst = decimated;
 
-		// Decimate input chunk to 512 stereo frames at 12 kHz with a
-		// boxcar low-pass (averaging `decim` consecutive frames).
-		// Crude antialias but sufficient for 1200/2200 Hz AFSK whose
-		// energy sits well below 12 kHz Nyquist.
+		decimateAudioToModem(src, decim, decimated);
+
+		// Level tracking on the decimator output (post-LPF, post-decim).
+		// Done after the helper so the level meters reflect what the
+		// modem actually sees, not the raw native-rate input.
 		for (int i = 0; i < 512; i++)
 		{
-			int sumL = 0, sumR = 0;
-			short * frame = src + (i * decim) * 2;
-			for (int k = 0; k < decim; k++)
-			{
-				sumL += frame[2 * k];
-				sumR += frame[2 * k + 1];
-			}
-			short outL = (short)(sumL / decim);
-			short outR = (short)(sumR / decim);
-			*dst++ = outL;
-			*dst++ = outR;
-
+			short outL = decimated[2 * i];
+			short outR = decimated[2 * i + 1];
 			if (outL < minL) minL = outL;
 			else if (outL > maxL) maxL = outL;
 			if (outR < minR) minR = outR;
