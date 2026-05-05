@@ -392,6 +392,12 @@ void CloseCOMPort(int fd)
 
 char CaptureDevice[256] = "";
 char PlaybackDevice[256] = "";
+// QAudioDevice::id().toBase64() of the user-selected devices,
+// persisted across launches. Empty until first save through the
+// Devices dialog; legacy installs fall back to description-string
+// matching in GetAudioDevices.
+char CaptureDeviceId[512] = "";
+char PlaybackDeviceId[512] = "";
 
 int CaptureCount = 0;
 int PlaybackCount = 0;

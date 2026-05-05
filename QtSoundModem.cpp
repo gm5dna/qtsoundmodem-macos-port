@@ -2572,6 +2572,31 @@ void QtSoundModem::deviceaccept()
 
 	CaptureIndex = Dev->inputDevice->currentIndex();
 
+#if defined(Q_OS_MACOS)
+	// Capture the stable id alongside the description. Picking a
+	// different duplicate-named device only changes the id (the
+	// description string is identical), so the id-changed test is
+	// the only thing that trips cardChanged for that case — without
+	// it the in-session reopen below is skipped and the new device
+	// is not opened until the next launch.
+	if (CaptureIndex >= 0 && CaptureIndex < inputDevices.size())
+	{
+		QByteArray idB64 = inputDevices[CaptureIndex].id().toBase64();
+		if (idB64.size() >= (qsizetype)sizeof(CaptureDeviceId))
+		{
+			Debugprintf("WARNING: capture device id (%lld bytes) exceeds "
+				"%zu-byte buffer; truncated id will not match on next "
+				"launch and persistence will fall back to description match",
+				(long long)idB64.size(), sizeof(CaptureDeviceId));
+		}
+		if (strcmp(CaptureDeviceId, idB64.constData()) != 0)
+		{
+			qstrncpy(CaptureDeviceId, idB64.constData(), sizeof(CaptureDeviceId));
+			cardChanged = 1;
+		}
+	}
+#endif
+
 	Q = Dev->outputDevice->currentText();
 
 	{
@@ -2584,6 +2609,26 @@ void QtSoundModem::deviceaccept()
 	}
 
 	PlayBackIndex = Dev->outputDevice->currentIndex();
+
+#if defined(Q_OS_MACOS)
+	// See CaptureDeviceId comment above for the cardChanged rationale.
+	if (PlayBackIndex >= 0 && PlayBackIndex < outputDevices.size())
+	{
+		QByteArray idB64 = outputDevices[PlayBackIndex].id().toBase64();
+		if (idB64.size() >= (qsizetype)sizeof(PlaybackDeviceId))
+		{
+			Debugprintf("WARNING: playback device id (%lld bytes) exceeds "
+				"%zu-byte buffer; truncated id will not match on next "
+				"launch and persistence will fall back to description match",
+				(long long)idB64.size(), sizeof(PlaybackDeviceId));
+		}
+		if (strcmp(PlaybackDeviceId, idB64.constData()) != 0)
+		{
+			qstrncpy(PlaybackDeviceId, idB64.constData(), sizeof(PlaybackDeviceId));
+			cardChanged = 1;
+		}
+	}
+#endif
 
 	Q = Dev->txLatency->text();
 	txLatency = Q.toInt();
@@ -2767,12 +2812,34 @@ void QtSoundModem::deviceaccept()
 	{
 		if (SoundMode == 5)
 		{
-			closeQSound();
+			// A hot-unplug delivered while the Devices dialog was open
+			// could have shrunk inputDevices / outputDevices through
+			// onAudioDevicesChanged → GetAudioDevices, leaving the
+			// indices we captured at OK time pointing past the end.
+			// Skip the reopen rather than crashing in operator[]; the
+			// user can reopen the dialog and re-pick from the current
+			// list. Settings are already saved at this point so the
+			// id-based persistence will pick up the right device on
+			// next launch.
+			if (CaptureIndex < 0 || CaptureIndex >= inputDevices.size() ||
+				PlayBackIndex < 0 || PlayBackIndex >= outputDevices.size())
+			{
+				Debugprintf("Audio device list changed while Devices dialog "
+					"was open (CaptureIndex=%d, count=%lld; PlayBackIndex=%d, "
+					"count=%lld); skipping reopen — please re-pick from "
+					"Settings → Devices",
+					CaptureIndex, (long long)inputDevices.size(),
+					PlayBackIndex, (long long)outputDevices.size());
+			}
+			else
+			{
+				closeQSound();
 
-			inDeviceInfo = inputDevices[CaptureIndex];
-			outDeviceInfo = outputDevices[PlayBackIndex];
-			initializeAudioOut(outDeviceInfo);
-			initializeAudioIn(inDeviceInfo);
+				inDeviceInfo = inputDevices[CaptureIndex];
+				outDeviceInfo = outputDevices[PlayBackIndex];
+				initializeAudioOut(outDeviceInfo);
+				initializeAudioIn(inDeviceInfo);
+			}
 
 			// QtSoundInit() was called here historically but it
 			// re-runs initializeAudio{In,Out} a second time against
@@ -4049,10 +4116,29 @@ void QtSoundModem::StartWatchdog()
 			 qstrncpy(CaptureNames[CaptureCount], deviceName.toUtf8().constData(),
 				 sizeof(CaptureNames[CaptureCount]));
 
-			 // TODO(macos): description() is not unique on macOS for
-			 // duplicate identical USB devices. Migrate persistence to
-			 // QAudioDevice::id() (QByteArray) if users hit this.
-			 if (stricmp(&CaptureNames[CaptureCount++][0], CaptureDevice) == 0)
+			 bool matched = false;
+#if defined(Q_OS_MACOS)
+			 // Prefer stable-id match: distinguishes duplicate-named
+			 // devices and survives macOS Audio MIDI Setup renames.
+			 // Falls through to description match for legacy .ini
+			 // files written before Commit B.
+			 if (CaptureDeviceId[0] != '\0')
+			 {
+				 QByteArray idB64 = inputDevices[i].id().toBase64();
+				 if (qstrcmp(idB64.constData(), CaptureDeviceId) == 0)
+				 {
+					 matched = true;
+					 // Refresh the description so the .ini stays
+					 // human-readable if macOS renamed the device.
+					 qstrncpy(CaptureDevice, deviceName.toUtf8().constData(),
+						 sizeof(CaptureDevice));
+				 }
+			 }
+#endif
+			 if (!matched && stricmp(&CaptureNames[CaptureCount][0], CaptureDevice) == 0)
+				 matched = true;
+
+			 if (matched)
 			 {
 				if (inDeviceInfo == QMediaDevices::defaultAudioInput())
 					 inDeviceInfo = inputDevices[i];
@@ -4061,6 +4147,8 @@ void QtSoundModem::StartWatchdog()
 			 }
 			 else
 				 qDebug() << "  " << deviceName;
+
+			 CaptureCount++;
 		 }
 	 }
 
@@ -4076,8 +4164,24 @@ void QtSoundModem::StartWatchdog()
 			 qstrncpy(PlaybackNames[PlaybackCount], deviceName.toUtf8().constData(),
 				 sizeof(PlaybackNames[PlaybackCount]));
 
-			 // TODO(macos): see CaptureNames matcher comment above.
-			 if (stricmp(&PlaybackNames[PlaybackCount++][0], PlaybackDevice) == 0)
+			 bool matched = false;
+#if defined(Q_OS_MACOS)
+			 // See CaptureNames matcher above for the id-first rationale.
+			 if (PlaybackDeviceId[0] != '\0')
+			 {
+				 QByteArray idB64 = outputDevices[i].id().toBase64();
+				 if (qstrcmp(idB64.constData(), PlaybackDeviceId) == 0)
+				 {
+					 matched = true;
+					 qstrncpy(PlaybackDevice, deviceName.toUtf8().constData(),
+						 sizeof(PlaybackDevice));
+				 }
+			 }
+#endif
+			 if (!matched && stricmp(&PlaybackNames[PlaybackCount][0], PlaybackDevice) == 0)
+				 matched = true;
+
+			 if (matched)
 			 {
 				 if (outDeviceInfo == QMediaDevices::defaultAudioOutput())
 					 outDeviceInfo = outputDevices[i];
@@ -4086,6 +4190,8 @@ void QtSoundModem::StartWatchdog()
 
 			 else
 				 qDebug() << "  " << deviceName;
+
+			 PlaybackCount++;
 		 }
 	 }
 
