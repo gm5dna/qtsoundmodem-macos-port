@@ -223,6 +223,18 @@ void getSettings()
 		sizeof(PlaybackDevice));
 
 #if defined(Q_OS_MACOS)
+	// Stable-id keys, written alongside the description keys since the
+	// Commit-B device-id persistence work. Empty on first launch and
+	// for legacy installs that pre-date this; GetAudioDevices then
+	// falls back to description-match against CaptureDevice /
+	// PlaybackDevice (the original behaviour).
+	qstrncpy(CaptureDeviceId,
+		settings->value("Init/SndRXDeviceId", "").toString().toUtf8().constData(),
+		sizeof(CaptureDeviceId));
+	qstrncpy(PlaybackDeviceId,
+		settings->value("Init/SndTXDeviceId", "").toString().toUtf8().constData(),
+		sizeof(PlaybackDeviceId));
+
 	if (CaptureDevice[0] == '\0')
 		qstrncpy(CaptureDevice,
 			QMediaDevices::defaultAudioInput().description().toUtf8().constData(),
@@ -498,6 +510,13 @@ void saveSettings()
 	
 	settings->setValue("Init/SndRXDeviceName", QString::fromUtf8(CaptureDevice));
 	settings->setValue("Init/SndTXDeviceName", QString::fromUtf8(PlaybackDevice));
+#if defined(Q_OS_MACOS)
+	// Stable-id companion keys; the description keys above remain
+	// the primary human-readable view. deviceaccept refreshes both
+	// when the user OKs the Devices dialog.
+	settings->setValue("Init/SndRXDeviceId", QString::fromUtf8(CaptureDeviceId));
+	settings->setValue("Init/SndTXDeviceId", QString::fromUtf8(PlaybackDeviceId));
+#endif
 
 	settings->setValue("Init/useKISSControls", useKISSControls);
 	settings->setValue("Init/SCO", SCO);

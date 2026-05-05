@@ -1059,6 +1059,12 @@ extern struct TDetector_t  DET[nr_emph + 1][16];
 
 extern char CaptureDevice[256];
 extern char PlaybackDevice[256];
+// macOS-only stable device identity (QAudioDevice::id().toBase64()).
+// Empty on platforms that match purely by description string. Larger
+// than the description buffer because CoreAudio UIDs are URL-style
+// strings prefixed with bundle identifiers and reverse-DNS paths.
+extern char CaptureDeviceId[512];
+extern char PlaybackDeviceId[512];
 
 extern TAX25Port AX25Port[4][port_num];
 
