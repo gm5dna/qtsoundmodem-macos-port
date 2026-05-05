@@ -2,24 +2,36 @@
 # filename<TAB>min-decoded-packet-count.
 # The runner accepts >= the threshold; FAILs if fewer packets decode.
 #
-# Baselines are placeholders. To capture meaningful baselines:
-#   1. Configure the modems in your live ~/Library/Application Support/
-#      gm5dna/QtSoundModem/QtSoundModem.ini to enable the speeds the
-#      test files use (AFSK 1200, RUH96, 300-baud + IL2P — see the
-#      header comment in run-regression.sh).
-#   2. Run test-files/run-regression.sh once and note the decoded
-#      counts.
-#   3. Replace the 0s below with those counts (or a slightly lower
-#      number to allow for run-to-run jitter).
-#   4. Commit the updated baselines.
+# Baselines captured 2026-05-05 against commit 3122f25 (FIR antialias
+# filter) with this modem config in
+# ~/Library/Application Support/gm5dna/QtSoundModem/QtSoundModem.ini:
+#   ModemType1=1   (AFSK 1200)   on soundChannel1=1 (LEFT)
+#   ModemType3=0   (SPEED_300)   on soundChannel3=1 (LEFT)
+#   IL2P=1, FX25=1 on AX25_A..D
 #
-# After Commit C (FIR antialias filter) lands, every line below
-# must hold-or-improve — the FIR's purpose is to widen the gap on
-# the 9600/300 files where boxcar aliasing currently bites.
+# To reproduce: enable at least one port at AFSK 1200 and one at
+# SPEED_300 with IL2P=1, on a non-zero soundChannel. The harness
+# upmixes mono input to identical stereo, so any non-zero channel
+# works. Without these modems enabled the script returns 0 for the
+# matching files and FAILs.
 #
-# WA8LMF Mic-E AFSK 1200: 100 packets is the ground-truth count
-# from the test CD (file is "100 Mic-E Bursts DE-Emphasized");
-# baseline-update the others against your boxcar measurement.
-02_100-Mic-E-Bursts-DE-emphasized.flac	0
+# FIR vs boxcar comparison (run from this commit's predecessor
+# dae3cb4): WA8LMF 957 → 961 (FIR +4); IL2P 79 → 79 (no change);
+# RUH96 stays at 0 in both — see RUH96 note below.
+#
+# WA8LMF Mic-E AFSK 1200: ground truth on the CD is 100 unique
+# bursts; observed count is much higher because each burst triggers
+# decode events across multiple modem ports + IL2P + FX25 layers.
+# Locked at 950 (~1% jitter margin from observed 961).
+#
+# IL2P 300: 79 observed deterministically across multiple runs;
+# locked at 75 (~5% margin).
+#
+# RUH96: 0 is the expected count in this harness — dw9600.c's
+# demod_9600_init is hardwired to 48000 Hz, but --decode-wav feeds
+# 12 kHz post-decimation samples to BufferFull. Validate RUH96
+# decode separately via BlackHole loopback (commit eb6db63
+# established the AFSK 1200 BlackHole rate at ~52 packets/min).
+02_100-Mic-E-Bursts-DE-emphasized.flac	950
 g3ruh_9600_5min.wav	0
-il2p_300_5min.wav	0
+il2p_300_5min.wav	75
