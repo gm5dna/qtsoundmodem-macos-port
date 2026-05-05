@@ -61,9 +61,6 @@ read zero samples.
   average, sufficient for 1200 baud AFSK but not a proper FIR
   antialias — RUH48 / RUH96 modes are likely affected. See the
   comment at `QtSoundModem.cpp:PollQSound`.
-- A narrow race exists if a TX device is hot-unplugged mid-transmit;
-  the upstream TX path lacks the mutex coverage needed to fix it
-  cleanly. Stop transmit before unplugging.
 - Audio device persistence is by description string (CoreAudio
   display name), not stable `id()`. Two devices with identical
   names won't be distinguishable; rename one if it matters.
