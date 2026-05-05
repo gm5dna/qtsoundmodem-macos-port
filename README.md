@@ -6,10 +6,7 @@ A fair warning up front: this is mostly a personal project. I'm a radio
 amateur (gm5dna) who wanted QtSoundModem on Apple Silicon, and most of
 the porting work — the Qt 6 audio backend, the libhidapi PTT shim, the
 macOS plumbing in `MacBits.c` / `MacPermissions.mm` — was done with
-heavy assistance from Claude. I've tried to read every diff, test the
-results, and not commit anything I don't understand, but I'm not a Qt
-or DSP expert and there will be rough edges I haven't spotted. Treat
-it accordingly.
+heavy assistance from Claude.
 
 Upstream ships Linux and Windows binaries only and has stated they
 don't accept pull requests, so this is a downstream fork rather than a
