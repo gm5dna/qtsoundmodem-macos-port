@@ -46,7 +46,7 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 #include <qevent.h>
 #include <QStandardItemModel>
 #include <QScrollBar>
-#include <QFontDialog>
+#include <QFontDatabase>
 #include <QFile>
 #include <QMutex>
 
@@ -589,12 +589,15 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 
 	QSettings mysettings("QtSoundModem.ini", QSettings::IniFormat);
 
-	family = mysettings.value("FontFamily", "Courier New").toString();
-	csize = mysettings.value("PointSize", 0).toInt();
-	weight = (QFont::Weight)mysettings.value("Weight", 50).toInt();
+	QFont sysFont = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
+
+	family = mysettings.value("FontFamily", sysFont.family()).toString();
+	csize = mysettings.value("PointSize", sysFont.pointSize()).toInt();
+	weight = (QFont::Weight)mysettings.value("Weight", sysFont.weight()).toInt();
 
 	Font = QFont(family);
-	Font.setPointSize(csize);
+	if (csize > 0)
+		Font.setPointSize(csize);
 	Font.setWeight(weight);
 
 	QApplication::setFont(Font);
@@ -715,12 +718,9 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 
 	connect(actModems, SIGNAL(triggered()), this, SLOT(clickedSlot()));
 
-	actFont = new QAction("Setup Font", this);
-	actFont->setMenuRole(QAction::NoRole);
-	actFont->setObjectName("actFont");
-	setupMenu->addAction(actFont);
-
-	connect(actFont, SIGNAL(triggered()), this, SLOT(clickedSlot()));
+	// Font picker disabled on macOS port: QFontDialog crashes inside
+	// QtWidgets on Qt 6.11 + macOS 26.x. Font defaults to the system
+	// font (set up in startup via QFontDatabase::systemFont).
 
 	actMintoTray = setupMenu->addAction("Minimize to Tray", this, SLOT(MinimizetoTray()));
 	actMintoTray->setCheckable(1);
@@ -1465,29 +1465,6 @@ void QtSoundModem::clickedSlot()
 
 
 
-	if (strcmp(Name, "actFont") == 0)
-	{
-		bool ok;
-		Font = QFontDialog::getFont(&ok, QFont(Font, this));
-
-		if (ok)
-		{
-			// the user clicked OK and font is set to the font the user selected
-			QApplication::setFont(Font);
-			sessionTable->horizontalHeader()->setFont(Font); 
-
-			saveSettings();
-		}
-		else
-		{
-			// the user canceled the dialog; font is set to the initial
-			// value, in this case Helvetica [Cronyx], 10
-
-//			QApplication::setFont(Font);
-
-		}
-		return;
-	}
 
 	QMessageBox msgBox;
 	msgBox.setWindowTitle("MessageBox Title");

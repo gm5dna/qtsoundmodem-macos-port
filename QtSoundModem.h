@@ -115,7 +115,6 @@ private:
 
 	QAction *actDevices;
 	QAction *actModems;
-	QAction *actFont;
 	QAction *actMintoTray;
 	QAction *actCalib;
 	QAction *actAbout;
