@@ -528,12 +528,18 @@ int InitSound(BOOL Report)
 	return FALSE;
 }
 
-// --decode-wav harness: read 12 kHz mono/stereo 16-bit PCM WAV
-// directly into the modem, bypassing Qt audio entirely. Pre-convert
-// any input with `afconvert -f WAVE -d LEI16@12000 -c 1 in.flac
-// out.wav`. Only handles canonical 44-byte PCM WAV headers — fails
-// loudly on extended headers / wrong rate / wrong bit depth.
+// --decode-wav harness: read a PCM 16-bit WAV (mono or stereo, any
+// sample rate that's an integer multiple of 12 kHz from 12 kHz to
+// 96 kHz) and feed it through the same decimator that the live audio
+// path (PollQSound) uses, then into the modem. Bypasses Qt audio
+// entirely — deterministic regression-test rig for both the boxcar
+// (today) and the windowed-sinc FIR (next commit).
+//
+// Walks the RIFF chunk list rather than assuming a 44-byte canonical
+// header so files produced by ffmpeg / sox with metadata LIST chunks
+// or extended fmt chunks parse without manual stripping.
 extern void ProcessNewSamples(short * Samples, int nSamples);
+extern void decimateAudioToModem(const short * src, int decim, short * dst);
 
 void debugDecodeWav(const char * path)
 {
@@ -545,71 +551,168 @@ void debugDecodeWav(const char * path)
 		return;
 	}
 
-	unsigned char hdr[44];
-	if (fread(hdr, 1, 44, f) != 44)
-	{
-		Debugprintf("debugDecodeWav: short header read");
-		fclose(f);
-		return;
-	}
-
-	if (memcmp(hdr, "RIFF", 4) != 0 || memcmp(hdr + 8, "WAVE", 4) != 0)
+	unsigned char riff[12];
+	if (fread(riff, 1, 12, f) != 12 ||
+		memcmp(riff, "RIFF", 4) != 0 ||
+		memcmp(riff + 8, "WAVE", 4) != 0)
 	{
 		Debugprintf("debugDecodeWav: not a RIFF/WAVE file");
 		fclose(f);
 		return;
 	}
 
-	short numCh    = (short)(hdr[22] | (hdr[23] << 8));
-	int sampleRate = hdr[24] | (hdr[25] << 8) | (hdr[26] << 16) | (hdr[27] << 24);
-	short bits     = (short)(hdr[34] | (hdr[35] << 8));
+	short numCh = 0;
+	int sampleRate = 0;
+	short bits = 0;
+	short formatTag = 0;
+	int dataChunkSize = 0;
+	long dataStart = -1;
 
-	Debugprintf("debugDecodeWav: %s — %d ch, %d Hz, %d-bit",
-		path, numCh, sampleRate, bits);
-
-	if (sampleRate != 12000 || bits != 16 || (numCh != 1 && numCh != 2))
+	// Walk chunks until we have fmt + data. Skip everything else
+	// (LIST metadata, JUNK alignment, etc.). chunkSize is unsigned
+	// in the WAV spec (DWORD); reading via signed int and rejecting
+	// negatives catches malformed files cheaply rather than seeking
+	// to a wild offset.
+	while (1)
 	{
-		Debugprintf("debugDecodeWav: expected 12000 Hz / 16-bit / 1 or 2 ch. "
-			"Pre-convert with: afconvert -f WAVE -d LEI16@12000 -c 1 in.* out.wav");
+		unsigned char ch[8];
+		if (fread(ch, 1, 8, f) != 8) break;
+		int chunkSize = ch[4] | (ch[5] << 8) | (ch[6] << 16) | (ch[7] << 24);
+		if (chunkSize < 0)
+		{
+			Debugprintf("debugDecodeWav: malformed chunk size %d in %s, aborting walk",
+				chunkSize, path);
+			break;
+		}
+
+		if (memcmp(ch, "fmt ", 4) == 0)
+		{
+			unsigned char fmt[40] = {0};
+			int n = chunkSize > (int)sizeof(fmt) ? (int)sizeof(fmt) : chunkSize;
+			if (fread(fmt, 1, n, f) != (size_t)n) break;
+			if (n < chunkSize) fseek(f, chunkSize - n, SEEK_CUR);
+			// PCMWAVEFORMAT layout: format(0-1) channels(2-3) rate(4-7)
+			// byterate(8-11) blockalign(12-13) bits(14-15).
+			formatTag = (short)(fmt[0] | (fmt[1] << 8));
+			numCh = (short)(fmt[2] | (fmt[3] << 8));
+			sampleRate = fmt[4] | (fmt[5] << 8) | (fmt[6] << 16) | (fmt[7] << 24);
+			bits = (short)(fmt[14] | (fmt[15] << 8));
+		}
+		else if (memcmp(ch, "data", 4) == 0)
+		{
+			dataStart = ftell(f);
+			dataChunkSize = chunkSize;
+			break;
+		}
+		else
+		{
+			// Skip this chunk (LIST / JUNK / id3 / etc).
+			if (fseek(f, chunkSize, SEEK_CUR) != 0) break;
+		}
+	}
+
+	if (dataStart < 0 || numCh == 0 || sampleRate == 0 || bits == 0)
+	{
+		Debugprintf("debugDecodeWav: failed to parse fmt + data chunks "
+			"from %s (numCh=%d, rate=%d, bits=%d, dataStart=%ld)",
+			path, numCh, sampleRate, bits, dataStart);
 		fclose(f);
 		return;
 	}
 
-	// Process in 512-stereo-sample chunks (matches PollQSound).
-	short stereo[1024];
-	int totalFrames = 0;
+	Debugprintf("debugDecodeWav: %s — %d ch, %d Hz, %d-bit, fmtTag=0x%04x, %d data bytes",
+		path, numCh, sampleRate, bits, (unsigned short)formatTag, dataChunkSize);
 
-	if (numCh == 1)
+	// WAVE_FORMAT_PCM is 0x0001. Anything else (float 0x0003, A-law
+	// 0x0006, EXTENSIBLE 0xFFFE, …) would feed garbage to the
+	// decimator if we just trusted bits==16. Refuse loudly instead.
+	if (formatTag != 0x0001)
 	{
-		short mono[512];
-		while (1)
-		{
-			size_t n = fread(mono, sizeof(short), 512, f);
-			if (n == 0) break;
-			for (size_t i = 0; i < n; i++)
-			{
-				stereo[2 * i]     = mono[i];
-				stereo[2 * i + 1] = mono[i];
-			}
-			ProcessNewSamples(stereo, (int)n);
-			totalFrames += (int)n;
-		}
+		Debugprintf("debugDecodeWav: format tag 0x%04x is not PCM (0x0001); refusing. "
+			"Pre-convert with: ffmpeg -i in.* -c:a pcm_s16le out.wav",
+			(unsigned short)formatTag);
+		fclose(f);
+		return;
 	}
-	else
+
+	if (bits != 16 || (numCh != 1 && numCh != 2))
 	{
-		while (1)
+		Debugprintf("debugDecodeWav: expected 16-bit PCM / 1 or 2 ch. "
+			"Pre-convert with: ffmpeg -i in.* -c:a pcm_s16le out.wav");
+		fclose(f);
+		return;
+	}
+
+	int decim = 1;
+	if (sampleRate < 12000)
+	{
+		Debugprintf("debugDecodeWav: sample rate %d Hz < 12000 Hz; "
+			"upsampling not supported, aborting", sampleRate);
+		fclose(f);
+		return;
+	}
+	decim = sampleRate / 12000;
+	if (decim > 8)
+	{
+		Debugprintf("debugDecodeWav: decim factor %d (sample rate %d Hz) "
+			"exceeds reasonable range; aborting", decim, sampleRate);
+		fclose(f);
+		return;
+	}
+	if (sampleRate % 12000 != 0)
+	{
+		Debugprintf("debugDecodeWav: WARNING %d Hz is not an integer "
+			"multiple of 12000 Hz; truncating to decim=%d (output rate "
+			"%d Hz, drift %.2f%%). Pre-resample for clean tests.",
+			sampleRate, decim, sampleRate / decim,
+			100.0 * (1.0 - 12000.0 * decim / sampleRate));
+	}
+
+	// Force one BPF/TXBPF coefficient computation per channel before
+	// the first sample lands in BufferFull. Normally the GUI paths
+	// (RX-frequency change handlers, mode-change reload) set these
+	// flags during construction; in headless --decode-wav mode no
+	// GUI runs so pnt_change stays FALSE and the modem code skips
+	// the make_core_BPF call, leaving zero filter coefficients and
+	// silently failing every decode. Mirror the GUI's "set all four
+	// flags TRUE on init" behaviour here.
+	extern int pnt_change[5];
+	for (int i = 0; i < 4; i++) pnt_change[i] = 1;
+
+	// Process in 512-output-frame chunks (matches PollQSound).
+	const int inFramesPerChunk = 512 * decim;
+	// Stack buffers sized for decim up to 8 (96 kHz → 12 kHz).
+	short stereoIn[2 * 512 * 8];
+	short monoBuf[512 * 8];
+	short decimated[1024];
+	int totalInFrames = 0;
+
+	while (1)
+	{
+		if (numCh == 1)
 		{
-			// 512 stereo frames = 1024 shorts = 2048 bytes
-			size_t n = fread(stereo, sizeof(short) * 2, 512, f);
-			if (n == 0) break;
-			ProcessNewSamples(stereo, (int)n);
-			totalFrames += (int)n;
+			size_t n = fread(monoBuf, sizeof(short), inFramesPerChunk, f);
+			if ((int)n < inFramesPerChunk) break;  // ignore short tail
+			for (int i = 0; i < inFramesPerChunk; i++)
+			{
+				stereoIn[2 * i]     = monoBuf[i];
+				stereoIn[2 * i + 1] = monoBuf[i];
+			}
 		}
+		else
+		{
+			size_t n = fread(stereoIn, sizeof(short) * 2, inFramesPerChunk, f);
+			if ((int)n < inFramesPerChunk) break;  // ignore short tail (mono branch above too)
+		}
+
+		decimateAudioToModem(stereoIn, decim, decimated);
+		ProcessNewSamples(decimated, 512);
+		totalInFrames += inFramesPerChunk;
 	}
 
 	fclose(f);
-	Debugprintf("debugDecodeWav: processed %d sample frames (%.2f s)",
-		totalFrames, (double)totalFrames / sampleRate);
+	Debugprintf("debugDecodeWav: processed %d input frames (%.2f s at %d Hz)",
+		totalInFrames, (double)totalInFrames / sampleRate, sampleRate);
 }
 
 unsigned int getTicks(void)
