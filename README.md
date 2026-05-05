@@ -11,7 +11,7 @@ Branch model:
 - `master` mirrors upstream verbatim.
 - `macos-port` is the patched series. Build from this branch.
 
-Tested on macOS 26.4 (Sequoia / Tahoe), Apple Silicon, Qt 6.10 from
+Tested on macOS 26.4.1 (Tahoe), Apple Silicon, Qt 6.11 from
 Homebrew. Layer-2 AX.25 decoding has been validated end-to-end through
 BlackHole loopback and the `--decode-wav` harness. Real-RF testing is
 in progress.
@@ -63,6 +63,15 @@ read zero samples.
   is what `initializeAudioIn` asks for first; the fallback only
   fires if the device refuses any of those. Modems still try to
   decode but timing drift dominates over antialias quality.
+
+- **No "Setup Font" menu item.** Qt 6.11's `QFontDialog` crashes
+  inside QtWidgets on macOS 26 (null deref in font-family
+  enumeration), so the menu entry has been removed. The app
+  defaults to the macOS system UI font (SF Pro on Tahoe) when
+  `QtSoundModem.ini` has no saved `FontFamily`. To change the
+  font manually, edit `FontFamily` / `PointSize` / `Weight` in
+  the .ini directly. Will be revisited if upstream Qt fixes the
+  font dialog.
 
 ## Origin
 
