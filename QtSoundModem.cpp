@@ -48,6 +48,7 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 #include <QScrollBar>
 #include <QFontDialog>
 #include <QFile>
+#include <QMutex>
 
 #include "UZ7HOStuff.h"
 
@@ -4011,6 +4012,16 @@ void QtSoundModem::StartWatchdog()
  QAudioSink * m_audioOutput;
  QAudioSource * m_audioInput;
 
+ // Serialises every access to the four audio pointers above
+ // (m_audioInput, m_audioOutput, in, out) so the worker-thread
+ // TX/RX path cannot read a pointer the GUI-thread teardown is in
+ // the middle of nulling. Held only across pointer reads/writes
+ // and short Qt calls (bytesFree, write, stop); never across
+ // txSleep or anything that would block. File-static, not a class
+ // member, because the worker callbacks have C linkage and don't
+ // carry a `this`.
+ static QMutex s_audioMutex;
+
 #ifndef WIN32
  extern "C" int stricmp(char * pStr1, char *pStr2);
 #endif
@@ -4083,10 +4094,18 @@ void QtSoundModem::StartWatchdog()
 
  void QtSoundModem::audioInStateChanged(QAudio::State newState)
  {
+	 // A queued stateChanged can be delivered after teardown has nulled
+	 // m_audioInput (the disconnect-before-stop ordering in closeQSound /
+	 // onAudioDevicesChanged closes the window for new emissions, but
+	 // events already queued before disconnect still dispatch). Bail
+	 // before dereferencing.
+	 if (!m_audioInput)
+		 return;
+
 	 switch (newState)
 	 {
 	 case QAudio::StoppedState:
-		 if (m_audioInput->error() != QAudio::NoError) 
+		 if (m_audioInput->error() != QAudio::NoError)
 		 {
 			 // Error handling
 		 }
@@ -4114,6 +4133,11 @@ void QtSoundModem::StartWatchdog()
 
  void QtSoundModem::audioOutStateChanged(QAudio::State newState)
  {
+	 // See audioInStateChanged: queued stateChanged can be delivered
+	 // after teardown nulls m_audioOutput.
+	 if (!m_audioOutput)
+		 return;
+
 	 switch (newState)
 	 {
 	 case QAudio::StoppedState:
@@ -4124,7 +4148,7 @@ void QtSoundModem::StartWatchdog()
 		 {
 			 // Error handling
 		 }
-		 else 
+		 else
 		 {
 			 // Finished recording
 		 }
@@ -4242,44 +4266,53 @@ void QtSoundModem::StartWatchdog()
 	 bool outGone = outDeviceInfo.isNull()
 		 || !QMediaDevices::audioOutputs().contains(outDeviceInfo);
 
-	 if (inGone)
+	 // Serialise teardown against the worker-thread TX/RX path.
+	 // The auto-reopen calls below run after this scope releases
+	 // the lock, so initializeAudio* (which is itself unlocked) is
+	 // not at risk of recursive deadlock here. Worker access to the
+	 // four audio pointers is also under s_audioMutex, so the
+	 // null-then-deleteLater sequence cannot race with a write.
 	 {
-		 if (m_audioInput)
+		 QMutexLocker locker(&s_audioMutex);
+		 if (inGone)
 		 {
-			 // Disconnect the state-change signal before stop() so a
-			 // queued stateChanged delivered after deleteLater() does
-			 // not fire on a freed object.
-			 disconnect(m_audioInput, &QAudioSource::stateChanged,
-				 this, &QtSoundModem::audioInStateChanged);
-			 m_audioInput->stop();
-			 // The QIODevice returned by QAudioSource::start() is no
-			 // longer usable after stop(); null the static cache so
-			 // PollQSound's `if (in == nullptr) return;` fires and
-			 // we don't read through a dangling pointer.
-			 in = nullptr;
-			 m_audioInput->deleteLater();
-			 m_audioInput = nullptr;
+			 if (m_audioInput)
+			 {
+				 // Disconnect the state-change signal before stop() so a
+				 // queued stateChanged delivered after deleteLater() does
+				 // not fire on a freed object.
+				 disconnect(m_audioInput, &QAudioSource::stateChanged,
+					 this, &QtSoundModem::audioInStateChanged);
+				 m_audioInput->stop();
+				 // The QIODevice returned by QAudioSource::start() is no
+				 // longer usable after stop(); null the static cache so
+				 // PollQSound's `if (in == nullptr) return;` fires and
+				 // we don't read through a dangling pointer.
+				 in = nullptr;
+				 m_audioInput->deleteLater();
+				 m_audioInput = nullptr;
+			 }
+			 inDeviceInfo = QAudioDevice();
 		 }
-		 inDeviceInfo = QAudioDevice();
-	 }
-	 if (outGone)
-	 {
-		 if (m_audioOutput)
+		 if (outGone)
 		 {
-			 disconnect(m_audioOutput, &QAudioSink::stateChanged,
-				 this, &QtSoundModem::audioOutStateChanged);
-			 m_audioOutput->stop();
-			 out = nullptr;
-			 m_audioOutput->deleteLater();
-			 m_audioOutput = nullptr;
+			 if (m_audioOutput)
+			 {
+				 disconnect(m_audioOutput, &QAudioSink::stateChanged,
+					 this, &QtSoundModem::audioOutStateChanged);
+				 m_audioOutput->stop();
+				 out = nullptr;
+				 m_audioOutput->deleteLater();
+				 m_audioOutput = nullptr;
+			 }
+			 outDeviceInfo = QAudioDevice();
+			 // The audioOutStateChanged → IdleState handler usually
+			 // clears SoundIsPlaying, but a torn-down sink will not
+			 // emit it. Clear here so DoTX's "still playing?" guard
+			 // does not wedge transmit until restart.
+			 extern int SoundIsPlaying;
+			 SoundIsPlaying = 0;
 		 }
-		 outDeviceInfo = QAudioDevice();
-		 // The audioOutStateChanged → IdleState handler usually
-		 // clears SoundIsPlaying, but a torn-down sink will not
-		 // emit it. Clear here so DoTX's "still playing?" guard
-		 // does not wedge transmit until restart.
-		 extern int SoundIsPlaying;
-		 SoundIsPlaying = 0;
 	 }
 
 	 if (inGone || outGone)
@@ -4373,6 +4406,14 @@ void QtSoundModem::StartWatchdog()
 	 qDebug() << "Sample Rate" << g_audioInputRate
 		 << "(decimation factor" << g_audioInputDecim << "to 12 kHz)";
 
+	 // Publish m_audioInput + in under s_audioMutex so the worker-thread
+	 // readers in PollQSound see the constructed-and-started object via
+	 // the same lock that paired with the previous teardown's release.
+	 // Without this, on arm64 the reader's mutex acquire pairs with the
+	 // teardown's release but not with these stores, leaving the
+	 // publication of the new QAudioSource not happens-before the
+	 // worker's read.
+	 QMutexLocker locker(&s_audioMutex);
 	 m_audioInput = new QAudioSource(deviceInfo, format, this);
 	 connect(m_audioInput, &QAudioSource::stateChanged, this, &QtSoundModem::audioInStateChanged);
 
@@ -4402,6 +4443,8 @@ void QtSoundModem::StartWatchdog()
 
 	 qDebug() << "Sample Rate" << format.sampleRate();
 
+	 // See initializeAudioIn for the publication-under-lock rationale.
+	 QMutexLocker locker(&s_audioMutex);
 	 m_audioOutput = new QAudioSink(deviceInfo, format, this);
 	 connect(m_audioOutput, &QAudioSink::stateChanged, this, &QtSoundModem::audioOutStateChanged);
 
@@ -4425,6 +4468,7 @@ void QtSoundModem::StartWatchdog()
 	 // QAudioSource/Sink (parented to `this`, so they survive until
 	 // window destruction) and a queued stateChanged signal could fire
 	 // on the about-to-be-replaced source.
+	 QMutexLocker locker(&s_audioMutex);
 	 if (m_audioInput)
 	 {
 		 disconnect(m_audioInput, &QAudioSource::stateChanged,
@@ -4456,48 +4500,50 @@ void QtSoundModem::StartWatchdog()
 
  extern "C" unsigned short * sendSamplestoQSound(unsigned short * buf, int n)
  {
-	 // Hot-unplug guard: onAudioDevicesChanged nulls these when the
-	 // active device disappears. The check is repeated inside the
-	 // bytesFree() wait loop below — full thread-safety would need a
-	 // mutex serialising teardown with worker-thread writes, which
-	 // is a wider refactor (the upstream TX path has unsynchronised
-	 // access in many places). The narrower rechecks here reduce
-	 // the crash window from "entire wait" to "single statement";
-	 // a torn-down sink mid-write may still be reached transiently
-	 // and the user should restart the app if TX wedges after a
-	 // hot-unplug during transmit.
-	 if (!m_audioOutput || !out)
-		 return buf;
-
-	 int in = 0;
-	 int space = m_audioOutput->bytesFree();
-	 int size = kAudioPeriodBytes;
+	 // Hot-unplug guard: onAudioDevicesChanged / closeQSound null
+	 // m_audioOutput and out under s_audioMutex when the active
+	 // device disappears or is replaced. We hold the lock across
+	 // every read/write of those pointers (and across the Qt calls
+	 // they target — bytesFree, write — which are non-blocking),
+	 // and we DROP the lock for txSleep so a concurrent teardown
+	 // can run while we wait.
+	 int space;
+	 {
+		 QMutexLocker locker(&s_audioMutex);
+		 if (!m_audioOutput || !out)
+			 return buf;
+		 space = m_audioOutput->bytesFree();
+	 }
+	 const int size = kAudioPeriodBytes;
 	 int chunks = space / size;
 
 	 Debugprintf("ToSend %d Space %d Period Size %d chunks %d ", n * 4, space, size, chunks);
 
-	 // We are passed Stereo 16 bit samples. I think n is number of samples so send n x 4 
+	 // We are passed Stereo 16 bit samples. I think n is number of samples so send n x 4
 
-	 // On Linux, at least with my systems,
-
-	 space = m_audioOutput->bytesFree() / 4;
-
-	 while (space < n)
+	 for (;;)
 	 {
+		 int frames;
+		 {
+			 QMutexLocker locker(&s_audioMutex);
+			 if (!m_audioOutput || !out)
+				 return buf;
+			 frames = m_audioOutput->bytesFree() / 4;
+		 }
+		 if (frames >= n)
+			 break;
 		 txSleep(10);
-		 // Recheck after the sleep — another thread may have torn
-		 // down the sink while we were waiting.
-		 if (!m_audioOutput || !out)
-			 return buf;
-		 space = m_audioOutput->bytesFree() / 4;
-		 Debugprintf("Space %d", space);
+		 Debugprintf("Space %d", frames);
 	 }
 
-	 if (!out) return buf;
-	 int x = out->write((char *)buf, n * 4);
-
-	 space = m_audioOutput->bytesFree();
-	 size = kAudioPeriodBytes;
+	 int x;
+	 {
+		 QMutexLocker locker(&s_audioMutex);
+		 if (!m_audioOutput || !out)
+			 return buf;
+		 x = out->write((char *)buf, n * 4);
+		 space = m_audioOutput->bytesFree();
+	 }
 	 chunks = space / size;
 
 	 Debugprintf("Space %d Period Size %d chunks %d ", space, size, chunks);
@@ -4596,16 +4642,8 @@ extern "C" void PollQSound()
 	// Process any captured samples
 	// Ideally call at least every 100 mS, more than 200 will loose data
 
-	// For level display we want a fairly rapid level average but only want to report 
+	// For level display we want a fairly rapid level average but only want to report
 	// to log every 10 secs or so
-
-	if (!m_audioInput)
-		return;
-
-	int xx = m_audioInput->state();
-
-	if (in == nullptr)
-		return;
 
 	// Each output chunk = 512 stereo Int16 frames at 12 kHz =
 	// 2048 bytes. Input chunk scales by decimation:
@@ -4616,12 +4654,26 @@ extern "C" void PollQSound()
 	const int outChunkBytes = 2048;
 	const int inChunkBytes = outChunkBytes * decim;
 
-	int size = kAudioPeriodBytes * decim;
+	// Lock only across the audio-pointer reads and the in->read()
+	// call. The decimation/processing loop below operates on the
+	// captured Buffer and doesn't touch the audio objects, so
+	// holding the lock there would needlessly block teardown.
+	int x;
+	{
+		QMutexLocker locker(&s_audioMutex);
+		if (!m_audioInput)
+			return;
 
-	if (BufferLen + size > (int)sizeof(Buffer))
-		size = (int)sizeof(Buffer) - BufferLen;
+		if (in == nullptr)
+			return;
 
-	int x = in->read(&Buffer[BufferLen], size);
+		int size = kAudioPeriodBytes * decim;
+
+		if (BufferLen + size > (int)sizeof(Buffer))
+			size = (int)sizeof(Buffer) - BufferLen;
+
+		x = in->read(&Buffer[BufferLen], size);
+	}
 
 	BufferLen += x;
 
