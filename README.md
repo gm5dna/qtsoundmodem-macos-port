@@ -75,11 +75,15 @@ read zero samples and look like it isn't working.
 
 ## Known limitations
 
-- **44.1 / 96 kHz audio devices** fall back to truncated integer
-  decimation, so the modem's effective rate isn't quite 12 kHz and
-  timing drifts. `initializeAudioIn` asks CoreAudio for 48 / 24 /
-  12 kHz first and only falls back if the device refuses all of
-  those. Decoding still happens; quality won't be great.
+- **Audio devices that don't offer a clean modem-compatible format
+  are now refused** with a dialog rather than silently producing
+  garbled audio. The modem requires Int16 PCM at 12, 24, 48 or
+  96 kHz on input (with a 12 kHz strict requirement on output, since
+  there's no TX resampler yet); a Float-format device, or one that
+  only offers 44.1 / 88.2 kHz, gets a clear "pick another device or
+  change the rate in Audio MIDI Setup" message instead of opening
+  with a 22% timing error or reinterpreting Float bytes as Int16.
+  No polyphase resampler — out of scope for the port.
 
 - **No "Setup Font" menu item.** Qt 6.11's `QFontDialog` crashes
   inside QtWidgets on macOS 26 (null deref in font-family

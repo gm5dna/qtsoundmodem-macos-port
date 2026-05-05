@@ -4466,6 +4466,56 @@ void QtSoundModem::StartWatchdog()
 
  extern "C" void aaFilterInit(int sampleRateIn);
 
+ // Integer multiples of 12000 supported by the input decimator. Anything
+ // else falls back to truncated integer decimation (decim = floor(rate/12000))
+ // which leaves the modem running at a rate it thinks is 12 kHz but
+ // actually isn't: 44.1 kHz → decim=3 → effective 14.7 kHz (22.5% drift,
+ // breaks AFSK bit recovery); 88.2 kHz → decim=7 → 12.6 kHz (5%).
+ // Upper bound 96 kHz: decimateAudioToModem silences decim > 8 (sized for
+ // a 96→12 kHz max), so 192 kHz is *not* whitelisted here even though it
+ // divides cleanly — the FIR working buffer would overrun.
+ static bool isSafeModemInputRate(int rate)
+ {
+	 return rate == 12000 || rate == 24000
+		 || rate == 48000 || rate == 96000;
+ }
+
+ // Output is stricter: sendSamplestoQSound writes the modem's 12 kHz
+ // frames directly to the QAudioSink without rate adaptation. A sink
+ // opened at any other rate would play TX at the wrong speed (e.g. 48 kHz
+ // → 4× fast). Until an output resampler exists, only 12 kHz is safe.
+ // CoreAudio normally accepts 12 kHz on every device via auto-resample,
+ // so this rarely refuses on macOS.
+ static bool isSafeModemOutputRate(int rate)
+ {
+	 return rate == 12000;
+ }
+
+ // INPUT: the downstream modem code reinterprets the byte stream as
+ // Int16. A Float preferredFormat would have its 4-byte float values read
+ // as pairs of Int16, producing wildly wrong sample values that the demod
+ // cannot recover from — refuse outright. Mono Int16 is also technically
+ // wrong (the bytes get reinterpreted as stereo, halving effective time
+ // resolution) but the AFSK demod copes empirically, and refusing mono
+ // would regress users whose USB radio interfaces enumerate as mono Int16.
+ // Until upstream gains explicit channel handling, accept any channel
+ // count provided the sample format is Int16.
+ static bool isCompatibleAudioInputFormat(const QAudioFormat &fmt)
+ {
+	 return fmt.sampleFormat() == QAudioFormat::Int16;
+ }
+
+ // OUTPUT: stricter than input. sendSamplestoQSound writes `n * 4` bytes
+ // = exactly stereo Int16 frames, so a mono sink receives every two
+ // consecutive sample values as one stereo frame and plays back garbled.
+ // Require stereo as well as Int16. CoreAudio normally accepts stereo
+ // Int16 on every device via auto-channel-mixing, so this rarely refuses.
+ static bool isCompatibleAudioOutputFormat(const QAudioFormat &fmt)
+ {
+	 return fmt.sampleFormat() == QAudioFormat::Int16
+		 && fmt.channelCount() == 2;
+ }
+
  void QtSoundModem::initializeAudioIn(const QAudioDevice &deviceInfo)
  {
 	 // Qt 6 dropped QAudioFormat::setSampleSize / setCodec / setByteOrder /
@@ -4501,11 +4551,80 @@ void QtSoundModem::StartWatchdog()
 		 format = deviceInfo.preferredFormat();
 		 g_audioInputRate = format.sampleRate();
 		 Debugprintf("WARNING: input device does not support 12/24/48 kHz "
-			 "stereo Int16; falling back to %d Hz / %d ch / sample-format %d. "
-			 "Modem decode will degrade.",
+			 "stereo Int16; preferredFormat is %d Hz / %d ch / sample-format %d.",
 			 format.sampleRate(), format.channelCount(),
 			 (int)format.sampleFormat());
 	 }
+
+	 // Per-direction gate to suppress repeat dialogs when multiple init
+	 // signals fire for the same bad device. Keyed on QAudioDevice::id()
+	 // (opaque, stable per physical device, distinguishes duplicate
+	 // descriptions) — same persistence key used by Init/SndRXDeviceId.
+	 // Cleared on successful init so a later refusal of a different
+	 // device, or this same device after the user fixes its rate,
+	 // re-warns.
+	 static QByteArray s_lastWarnedInDev;
+
+	 // Refuse rates outside the supported decimator set or formats the
+	 // downstream modem code can't interpret. Caller's prior teardown
+	 // leaves m_audioInput/in null, so we just early-return without
+	 // constructing a stream.
+	 const bool rateOk = isSafeModemInputRate(g_audioInputRate);
+	 const bool fmtOk = isCompatibleAudioInputFormat(format);
+	 if (!rateOk || !fmtOk)
+	 {
+		 // Drift figure for the rate diagnostic (only meaningful when the
+		 // rate is the problem — float-format / mono is reported separately).
+		 int decim = (g_audioInputRate < 12000) ? 1 : g_audioInputRate / 12000;
+		 if (decim > 8) decim = 8;
+		 double effectiveOut = (double)g_audioInputRate / decim;
+		 double drift = effectiveOut - 12000.0;
+		 if (drift < 0) drift = -drift;
+		 double driftPct = drift / 12000.0 * 100.0;
+
+		 Debugprintf("REFUSED: input device '%s' offered %d Hz / %d ch / "
+			 "sample-format %d; modem requires Int16 PCM at "
+			 "12/24/48/96 kHz. Stream not opened.",
+			 deviceInfo.description().toUtf8().constData(),
+			 g_audioInputRate, format.channelCount(),
+			 (int)format.sampleFormat());
+
+		 const QByteArray deviceKey = deviceInfo.id();
+		 if (s_lastWarnedInDev != deviceKey)
+		 {
+			 s_lastWarnedInDev = deviceKey;
+			 QString detail;
+			 if (!rateOk)
+				 detail = tr("offers %1 Hz, which is not 12, 24, 48 or "
+						"96 kHz (truncated decimation would yield "
+						"%2 Hz, a %3% timing error)")
+					 .arg(g_audioInputRate)
+					 .arg((int)effectiveOut)
+					 .arg(QString::number(driftPct, 'f', 1));
+			 else
+				 detail = tr("offers a non-Int16 sample format that "
+						"the modem cannot interpret");
+
+			 QMessageBox::warning(this, tr("Audio input not supported"),
+				 tr("The input device \"%1\" %2. Decoding has been "
+					"disabled for this device.\n\n"
+					"Pick an input that supports 48 kHz Int16 PCM "
+					"(most do), or change this device's rate in "
+					"Audio MIDI Setup.")
+				 .arg(deviceInfo.description())
+				 .arg(detail));
+		 }
+
+		 g_audioInputRate = 12000;
+		 g_audioInputDecim = 1;
+		 // Clear the device handle so onAudioDevicesChanged's auto-reopen
+		 // path doesn't loop on this device on every device-list emit.
+		 // The user must re-pick from the Devices dialog (correct, since
+		 // we already told them via the modal that this device can't work).
+		 inDeviceInfo = QAudioDevice();
+		 return;
+	 }
+
 	 g_audioInputDecim = g_audioInputRate / 12000;
 	 if (g_audioInputDecim < 1) g_audioInputDecim = 1;
 
@@ -4532,6 +4651,11 @@ void QtSoundModem::StartWatchdog()
 	 // of headroom before overrun.
 	 m_audioInput->setBufferSize(16384 * g_audioInputDecim);
 	 in = m_audioInput->start();
+
+	 // A successful open closes the warning gate — if this same device
+	 // later goes back to a refusable rate (or a different bad device
+	 // appears), the user gets a fresh dialog rather than silent failure.
+	 s_lastWarnedInDev.clear();
  }
  void QtSoundModem::initializeAudioOut(const QAudioDevice &deviceInfo)
  {
@@ -4546,10 +4670,70 @@ void QtSoundModem::StartWatchdog()
 	 {
 		 format = deviceInfo.preferredFormat();
 		 Debugprintf("WARNING: output device does not support 12 kHz/stereo/Int16; "
-			 "falling back to %d Hz / %d ch / sample-format %d. TX audio "
-			 "will sound wrong until a future commit adds resampling.",
+			 "preferredFormat is %d Hz / %d ch / sample-format %d.",
 			 format.sampleRate(), format.channelCount(),
 			 (int)format.sampleFormat());
+	 }
+
+	 // Per-direction gate; see initializeAudioIn for the rationale.
+	 static QByteArray s_lastWarnedOutDev;
+
+	 // Output is stricter than input: sendSamplestoQSound writes 12 kHz
+	 // frames straight to the sink, so anything other than 12 kHz / 2 ch /
+	 // Int16 plays TX at the wrong speed or as garbled bytes. CoreAudio
+	 // normally accepts 12 kHz on every device via auto-resample, so this
+	 // rarely refuses.
+	 const bool outRateOk = isSafeModemOutputRate(format.sampleRate());
+	 const bool outFmtOk = isCompatibleAudioOutputFormat(format);
+	 if (!outRateOk || !outFmtOk)
+	 {
+		 const int outRate = format.sampleRate();
+
+		 Debugprintf("REFUSED: output device '%s' offered %d Hz / %d ch / "
+			 "sample-format %d; modem requires Int16 PCM at 12 kHz. "
+			 "Stream not opened.",
+			 deviceInfo.description().toUtf8().constData(),
+			 outRate, format.channelCount(),
+			 (int)format.sampleFormat());
+
+		 const QByteArray deviceKey = deviceInfo.id();
+		 if (s_lastWarnedOutDev != deviceKey)
+		 {
+			 s_lastWarnedOutDev = deviceKey;
+			 QString detail;
+			 if (!outRateOk)
+			 {
+				 const double speedRatio = (double)outRate / 12000.0;
+				 detail = tr("only offers %1 Hz, not 12 000 Hz "
+						"(TX audio would play at %2× speed)")
+					 .arg(outRate)
+					 .arg(QString::number(speedRatio, 'f', 2));
+			 }
+			 else if (format.sampleFormat() != QAudioFormat::Int16)
+			 {
+				 detail = tr("offers a non-Int16 sample format that "
+						"the modem cannot produce");
+			 }
+			 else
+			 {
+				 detail = tr("offers %1-channel audio, but TX requires "
+						"a stereo (2-channel) sink — the modem writes "
+						"interleaved L+R frames")
+					 .arg(format.channelCount());
+			 }
+
+			 QMessageBox::warning(this, tr("Audio output not supported"),
+				 tr("The output device \"%1\" %2. TX has been disabled "
+					"for this device.\n\n"
+					"Pick an output that supports 12 kHz stereo Int16 "
+					"PCM (most do — CoreAudio auto-resamples), or pick "
+					"a different output device.")
+				 .arg(deviceInfo.description())
+				 .arg(detail));
+		 }
+		 // Clear so onAudioDevicesChanged's auto-reopen doesn't loop.
+		 outDeviceInfo = QAudioDevice();
+		 return;
 	 }
 
 	 qDebug() << "Sample Rate" << format.sampleRate();
@@ -4564,6 +4748,9 @@ void QtSoundModem::StartWatchdog()
 	 Debugprintf("Output Buffer Size %d", n);
 
 	 out = m_audioOutput->start();
+
+	 // Successful open — close the warning gate. See initializeAudioIn.
+	 s_lastWarnedOutDev.clear();
  }
 
  void QtSoundModem::closeQSound()
