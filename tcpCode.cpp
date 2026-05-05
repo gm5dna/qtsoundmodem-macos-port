@@ -55,6 +55,8 @@ extern serialThread *serial;
 #if defined(__APPLE__)
 extern "C" char * g_wavInputPath;
 extern "C" void debugDecodeWav(const char * path);
+extern "C" void debugDecodeWavNative(const char * path);
+extern "C" char * g_wavInputNativePath;
 #endif
 
 QString Response;
@@ -952,6 +954,16 @@ void workerThread::run()
 		qDebug() << "Decode-wav harness: feeding" << g_wavInputPath;
 		debugDecodeWav(g_wavInputPath);
 		qDebug() << "Decode-wav harness: done, exiting";
+		Closing = 1;
+	}
+	// --decode-wav-native: same idea but raw 48 kHz to BufferFull with
+	// using48000=1, bypassing the FIR decimator. Required for RUH-mode
+	// modems whose demod is hardwired to 48 kHz.
+	else if (g_wavInputNativePath != NULL)
+	{
+		qDebug() << "Decode-wav-native harness: feeding" << g_wavInputNativePath;
+		debugDecodeWavNative(g_wavInputNativePath);
+		qDebug() << "Decode-wav-native harness: done, exiting";
 		Closing = 1;
 	}
 #endif
