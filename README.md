@@ -57,10 +57,12 @@ read zero samples.
 
 ## Known limitations
 
-- The downsampling filter in `PollQSound` is a 4-tap boxcar moving
-  average, sufficient for 1200 baud AFSK but not a proper FIR
-  antialias — RUH48 / RUH96 modes are likely affected. See the
-  comment at `QtSoundModem.cpp:PollQSound`.
+- 44.1 / 96 kHz audio devices fall back to a truncated integer
+  decimation factor (output rate ≠ 12 kHz, modem timing drifts).
+  CoreAudio's auto-resample to 48 / 24 / 12 kHz is preferred and
+  is what `initializeAudioIn` asks for first; the fallback only
+  fires if the device refuses any of those. Modems still try to
+  decode but timing drift dominates over antialias quality.
 
 ## Origin
 

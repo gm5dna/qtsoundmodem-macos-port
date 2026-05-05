@@ -540,6 +540,7 @@ int InitSound(BOOL Report)
 // or extended fmt chunks parse without manual stripping.
 extern void ProcessNewSamples(short * Samples, int nSamples);
 extern void decimateAudioToModem(const short * src, int decim, short * dst);
+extern void aaFilterInit(int sampleRateIn);
 
 void debugDecodeWav(const char * path)
 {
@@ -667,6 +668,11 @@ void debugDecodeWav(const char * path)
 			sampleRate, decim, sampleRate / decim,
 			100.0 * (1.0 - 12000.0 * decim / sampleRate));
 	}
+
+	// Design the antialias FIR for this file's rate. The same helper
+	// runs from initializeAudioIn for live audio; designing twice with
+	// the same rate is a cheap no-op.
+	aaFilterInit(sampleRate);
 
 	// Force one BPF/TXBPF coefficient computation per channel before
 	// the first sample lands in BufferFull. Normally the GUI paths

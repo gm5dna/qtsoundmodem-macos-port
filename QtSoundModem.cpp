@@ -4465,6 +4465,8 @@ void QtSoundModem::StartWatchdog()
  int g_audioInputRate = 12000;
  int g_audioInputDecim = 1;
 
+ extern "C" void aaFilterInit(int sampleRateIn);
+
  void QtSoundModem::initializeAudioIn(const QAudioDevice &deviceInfo)
  {
 	 // Qt 6 dropped QAudioFormat::setSampleSize / setCodec / setByteOrder /
@@ -4507,6 +4509,10 @@ void QtSoundModem::StartWatchdog()
 	 }
 	 g_audioInputDecim = g_audioInputRate / 12000;
 	 if (g_audioInputDecim < 1) g_audioInputDecim = 1;
+
+	 // Design (or re-design) the antialias FIR for the negotiated rate.
+	 // No-op if the rate hasn't changed since last call.
+	 aaFilterInit(g_audioInputRate);
 
 	 qDebug() << "Opening Input Device " << deviceInfo.description();
 	 qDebug() << "Sample Rate" << g_audioInputRate
@@ -4743,35 +4749,161 @@ extern "C" void dumpInputClose()
 }
 #endif
 
+// 127-tap Hamming-windowed sinc low-pass for the native-rate → 12 kHz
+// decimation path. Replaces the previous 4-tap boxcar that the README
+// flagged as a known limitation. Linear-phase Type I (odd taps), exact
+// integer group delay 63 samples (5.25 ms at 12 kHz, well inside any
+// DCD/PTT margin). Coefficients are recomputed on every aaFilterInit
+// call (cheap; called once at audio-init or device change). Float
+// coefficients precomputed at init; per-sample cost is one MAC × 127
+// taps × 12 kHz × 2 channels ≈ 3 Mflops — negligible on Apple Silicon.
+//
+// Cutoff is 4500 Hz absolute, normalized per actual input sample rate
+// in aaFilterInit (fc = 4500/sampleRateIn) so the passband is 4.5 kHz
+// regardless of decim. Stopband ≥ 50 dB at 6 kHz (Hamming-windowed
+// sinc, ~53 dB peak sidelobe) — enough to suppress the 5–7 kHz alias
+// band that bit RUH96 / IL2P decode under boxcar. At decim=2 (24 kHz
+// native) the transition band sits closer to output Nyquist than at
+// 48 kHz; tested fine for the supported modems but 48 kHz native is
+// the design point.
+//
+// For decim==1 (12 kHz native) we'd be filtering inside the modem's
+// useful band; short-circuit to a straight stereo memcpy instead.
+// For non-integer-decim rates (44.1 kHz → decim=3 truncated) the
+// timing drift is the dominant problem, not aliasing — the existing
+// initializeAudioIn warning still applies; the FIR still runs and
+// helps reject HF content but does not fix the rate mismatch.
+
+#include <math.h>
+
+#define FIR_TAPS 127
+static float fir_coeffs[FIR_TAPS];
+static int fir_designed_rate = 0;  // 0 = needs design
+static float fir_histL[FIR_TAPS - 1];
+static float fir_histR[FIR_TAPS - 1];
+
+extern "C" void aaFilterInit(int sampleRateIn)
+{
+	// Defensive clamp: a misbehaving device negotiating 0 or a
+	// negative rate would otherwise give fc = 4500/0 = inf and
+	// poison the coefficients with NaN. Caller-side
+	// initializeAudioIn clamps decim but not the rate; matching
+	// the style of the decim>8 guard in decimateAudioToModem.
+	if (sampleRateIn < 12000)
+		sampleRateIn = 12000;
+
+	if (sampleRateIn == fir_designed_rate)
+		return;  // already designed for this rate
+	fir_designed_rate = sampleRateIn;
+
+	const int M = FIR_TAPS - 1;  // 126
+	const double fc = 4500.0 / (double)sampleRateIn;  // normalized cutoff
+	double sum = 0.0;
+	for (int n = 0; n <= M; n++)
+	{
+		double t = (double)n - (double)M / 2.0;
+		double sinc;
+		if (t == 0.0)
+			sinc = 2.0 * fc;
+		else
+			sinc = sin(2.0 * M_PI * fc * t) / (M_PI * t);
+		double w = 0.54 - 0.46 * cos(2.0 * M_PI * n / (double)M);  // Hamming
+		fir_coeffs[n] = (float)(sinc * w);
+		sum += fir_coeffs[n];
+	}
+	// Normalise so DC gain = 1.0 (windowing perturbs the integral).
+	for (int n = 0; n < FIR_TAPS; n++)
+		fir_coeffs[n] = (float)(fir_coeffs[n] / sum);
+
+	// Reset history on rate change so a stale tail from the previous
+	// rate doesn't bleed into the first few output frames.
+	for (int i = 0; i < FIR_TAPS - 1; i++)
+	{
+		fir_histL[i] = 0.0f;
+		fir_histR[i] = 0.0f;
+	}
+
+	Debugprintf("Antialias FIR: %d taps, cutoff %.0f Hz at %d Hz input "
+		"(normalised fc=%.4f, group delay %d samples)",
+		FIR_TAPS, fc * sampleRateIn, sampleRateIn, fc, M / 2);
+}
+
+static inline short fir_clip16(float x)
+{
+	if (x >= 32767.0f) return 32767;
+	if (x <= -32768.0f) return -32768;
+	return (short)lrintf(x);
+}
+
 // Decimate one chunk of interleaved stereo Int16 input down by integer
 // factor `decim`, producing 512 stereo output frames. Input must be
-// 512 * decim stereo frames. Currently a boxcar moving average
-// (sufficient for AFSK1200 below 1.5 kHz baseband but lossy for the
-// upper baseband, hence the README "Known limitations" entry); will
-// be replaced by a windowed-sinc FIR in the next commit. Both
-// PollQSound (live audio) and debugDecodeWav (--decode-wav harness)
-// route through this so the harness exercises the same DSP path the
-// live build does.
+// 512 * decim stereo frames. Both PollQSound (live audio) and
+// debugDecodeWav (--decode-wav harness) route through this so the
+// harness exercises the same DSP the live build does.
 extern "C" void decimateAudioToModem(const short * src, int decim, short * dst)
 {
 	if (decim <= 1)
 	{
-		// Fast path: 12 kHz native, no decimation. Straight stereo memcpy.
+		// Fast path: 12 kHz native, filtering would hit the modem's
+		// useful band. Straight stereo memcpy.
 		memcpy(dst, src, 512 * 2 * sizeof(short));
 		return;
 	}
+
+	if (decim > 8)
+	{
+		// Working buffers below are sized for decim <= 8 (96 kHz → 12 kHz).
+		// Anything past that is unsupported — fall back to silence rather
+		// than write past the buffer. PollQSound and debugDecodeWav both
+		// reject decim > 8 upstream, so this is belt-and-braces.
+		static int warned = 0;
+		if (!warned) {
+			warned = 1;
+			Debugprintf("decimateAudioToModem: decim=%d > 8 unsupported; output silenced", decim);
+		}
+		memset(dst, 0, 512 * 2 * sizeof(short));
+		return;
+	}
+
+	const int inFrames = 512 * decim;
+
+	// Working buffer: history (FIR_TAPS-1 frames) + current chunk.
+	// Sized for the max supported decim=8 (96 kHz → 12 kHz). Static
+	// to avoid 33 KB of stack churn on every invocation.
+	static float bufL[FIR_TAPS - 1 + 512 * 8];
+	static float bufR[FIR_TAPS - 1 + 512 * 8];
+
+	// Prepend the saved history and copy the new input as float.
+	memcpy(bufL, fir_histL, (FIR_TAPS - 1) * sizeof(float));
+	memcpy(bufR, fir_histR, (FIR_TAPS - 1) * sizeof(float));
+	for (int i = 0; i < inFrames; i++)
+	{
+		bufL[(FIR_TAPS - 1) + i] = (float)src[i * 2];
+		bufR[(FIR_TAPS - 1) + i] = (float)src[i * 2 + 1];
+	}
+
+	// Convolve and decimate. Output sample i corresponds to input
+	// position i*decim; the convolution window covers the FIR_TAPS
+	// inputs ending at that position.
 	for (int i = 0; i < 512; i++)
 	{
-		int sumL = 0, sumR = 0;
-		const short * frame = src + (i * decim) * 2;
-		for (int k = 0; k < decim; k++)
+		const int xi0 = i * decim;  // index into bufL/bufR of first tap
+		float accL = 0.0f, accR = 0.0f;
+		for (int n = 0; n < FIR_TAPS; n++)
 		{
-			sumL += frame[2 * k];
-			sumR += frame[2 * k + 1];
+			accL += fir_coeffs[n] * bufL[xi0 + n];
+			accR += fir_coeffs[n] * bufR[xi0 + n];
 		}
-		dst[2 * i]     = (short)(sumL / decim);
-		dst[2 * i + 1] = (short)(sumR / decim);
+		dst[i * 2]     = fir_clip16(accL);
+		dst[i * 2 + 1] = fir_clip16(accR);
 	}
+
+	// Save the trailing FIR_TAPS-1 input samples as history for the
+	// next chunk. The convolution at the start of next chunk reads
+	// this history at positions [0 .. FIR_TAPS-2], so we copy from
+	// the tail of bufL/bufR into the history slot.
+	memcpy(fir_histL, &bufL[inFrames], (FIR_TAPS - 1) * sizeof(float));
+	memcpy(fir_histR, &bufR[inFrames], (FIR_TAPS - 1) * sizeof(float));
 }
 
 extern "C" void PollQSound()
