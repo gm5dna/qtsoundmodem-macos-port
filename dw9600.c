@@ -2005,8 +2005,46 @@ void demod_9600_init(enum modem_t modem_type, int original_sample_rate, int upsa
 	// Works best with odd number in some tests.  Even is better in others.
 	//D->lp_filter_size = ((int) (0.5f * ( D->lp_filter_len_bits * (float)original_sample_rate / (float)baud ))) * 2 + 1;
 
-	// Just round to nearest integer.
-	D->lp_filter_size = (int)((D->lp_filter_len_bits * (float)original_sample_rate / baud) + 0.5f);
+	// lp_filter_size is the PER-POLYPHASE-PHASE tap count: the
+	// polyphase-scatter loop further down in demod_9600_init puts
+	// every upsample-th coefficient of lp_filter[] into one of the
+	// four lp_polyphase_N arrays, and demod_9600_process_sample
+	// sums lp_filter_size taps per phase via convolve() to produce
+	// one polyphase output. The total filter span passed to
+	// gen_lowpass is lp_filter_size * upsample.
+	//
+	// DSP intent: each polyphase phase must hold enough taps to
+	// produce meaningful bandlimited interpolation between input
+	// samples — a 1-tap phase reduces to a single multiply per
+	// output, which is nearest-neighbour upsampling, not polyphase
+	// reconstruction. The smallest sensible per-phase tap count is
+	// "1 symbol at the original sample rate" = original_rate / baud,
+	// which is what the upstream-style formula `rate / baud` produces
+	// at upsample=1 (5 taps for 48 kHz / 9600 baud, properly filtering).
+	// At upsample>1 the upstream formula leaves the per-phase tap
+	// count UNCHANGED while the total filter (lp_filter_size *
+	// upsample) shrinks the per-phase coverage proportionally —
+	// upsample=4 at 12000/9600 gives round(1.25)=1 tap per phase. To
+	// keep "1 symbol at the original rate" worth of filter PER PHASE
+	// regardless of upsample, multiply by `upsample` so each phase
+	// gets the same effective span the upsample=1 case would give
+	// at the equivalent un-upsampled rate.
+	//
+	// Trade-off: total filter span (lp_filter_size * upsample) grows
+	// as upsample², from N at upsample=1 to N*upsample² at upsample=N.
+	// At realistic radio parameters (rate ≤ 48000, upsample ≤ 4, baud
+	// ≥ 300) the worst case is rate=48000, baud=300, upsample=4 →
+	// total = 2560 taps, which exceeds MAX_FILTER_SIZE=480 and trips
+	// gen_lowpass's assert. Such extreme combinations need a caller-
+	// side guard before this is exercised.
+	//
+	// Regression-safe at upsample=1 (the only path any current code
+	// exercises): `rate * 1 / baud` is bit-identical to `rate / baud`,
+	// so all live-audio and harness paths see no behaviour change.
+	// The fix activates only when a future caller passes upsample>1
+	// (the dormant 12 kHz polyphase mode that's reserved for any
+	// future revisit of headless RUH testing).
+	D->lp_filter_size = (int)((D->lp_filter_len_bits * (float)original_sample_rate * upsample / baud) + 0.5f);
 
 	D->lp_window = BP_WINDOW_COSINE;
 
