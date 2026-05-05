@@ -76,11 +76,12 @@ flac_to_wav() {
 
 run_one() {
 	local file="$1"
-	local expected_min="$2"
+	local mode="$2"          # "fir" or "native"
+	local expected_min="$3"
 	local src="${CORPUS_DIR}/${file}"
 
 	if [ ! -f "${src}" ]; then
-		printf "MISSING %-50s (%s)\n" "${file}" "${src}"
+		printf "MISSING %-55s (%s)\n" "${file}" "${src}"
 		return 1
 	fi
 
@@ -90,26 +91,45 @@ run_one() {
 		*)      input="${src}" ;;
 	esac
 
+	# Two harness modes:
+	#   fir    → --decode-wav: decimateAudioToModem path (FIR antialias,
+	#            12 kHz to BufferFull). Exercises the FIR. Won't decode
+	#            RUH/G3RUH content because the dw9600 demod is
+	#            hardwired to 48 kHz.
+	#   native → --decode-wav-native: raw 48 kHz to BufferFull with
+	#            using48000=1; BufferFull's internal 4-skip downsample
+	#            handles FSK, and RUH gets the 48 kHz it needs.
+	local flag
+	case "${mode}" in
+		fir)    flag="--decode-wav" ;;
+		native) flag="--decode-wav-native" ;;
+		*)      printf "FAIL  %-55s unknown mode '%s'\n" "${file}" "${mode}"; return 1 ;;
+	esac
+
 	# `< /dev/null` on the binary too — same stdin-stealing concern
 	# as ffmpeg above.
 	local count
-	count=$("${BIN}" --decode-wav "${input}" </dev/null 2>&1 \
+	count=$("${BIN}" "${flag}" "${input}" </dev/null 2>&1 \
 		| grep -c "^DECODED \[RX\]" || true)
 
 	if [ "${count}" -ge "${expected_min}" ]; then
-		printf "PASS  %-50s decoded %4d (>= %d)\n" "${file}" "${count}" "${expected_min}"
+		printf "PASS  %-55s [%-6s] decoded %4d (>= %d)\n" "${file}" "${mode}" "${count}" "${expected_min}"
 		return 0
 	else
-		printf "FAIL  %-50s decoded %4d (< %d)\n" "${file}" "${count}" "${expected_min}"
+		printf "FAIL  %-55s [%-6s] decoded %4d (< %d)\n" "${file}" "${mode}" "${count}" "${expected_min}"
 		return 1
 	fi
 }
 
 fail=0
-while IFS=$'\t' read -r file expected; do
+while IFS=$'\t' read -r file mode expected; do
+	# Strip stray CR from CRLF-saved expected.txt files. Without this,
+	# `expected` ends with \r and the integer comparison below fails
+	# silently with "integer expression expected".
+	file="${file%$'\r'}"; mode="${mode%$'\r'}"; expected="${expected%$'\r'}"
 	# Skip blank lines and # comments.
 	case "${file}" in ''|\#*) continue ;; esac
-	run_one "${file}" "${expected}" || fail=1
+	run_one "${file}" "${mode}" "${expected}" || fail=1
 done < "${SCRIPT_DIR}/expected.txt"
 
 exit ${fail}

@@ -39,6 +39,17 @@ extern "C" int nonGUIMode;
 extern "C" char * g_wavInputPath = NULL;
 extern "C" void debugDecodeWav(const char * path);
 
+// Set by --decode-wav-native <path>. Like --decode-wav but feeds 48 kHz
+// raw samples to BufferFull with using48000=1, bypassing the FIR
+// decimator in PollQSound. Required for RUH48/RUH96 testing because
+// dw9600's demod_9600_init is hardwired to 48 kHz; the standard
+// --decode-wav path decimates to 12 kHz first which the RUH demod
+// can't decode. AFSK still works because BufferFull's runModems path
+// downsamples internally (naive 4-sample-skip; less clean than the
+// FIR path but adequate for the clean direwolf test signals).
+extern "C" char * g_wavInputNativePath = NULL;
+extern "C" void debugDecodeWavNative(const char * path);
+
 // Set by --dump-input <path>. When non-NULL, PollQSound additionally
 // writes its captured samples to this WAV file (12 kHz stereo Int16).
 // Lets us compare what Qt is actually delivering against the working
@@ -75,6 +86,11 @@ int main(int argc, char *argv[])
 		if (strcmp(argv[i], "--decode-wav") == 0)
 		{
 			g_wavInputPath = argv[i + 1];
+			nonGUIMode = 1;
+		}
+		if (strcmp(argv[i], "--decode-wav-native") == 0)
+		{
+			g_wavInputNativePath = argv[i + 1];
 			nonGUIMode = 1;
 		}
 		if (strcmp(argv[i], "--dump-input") == 0)
