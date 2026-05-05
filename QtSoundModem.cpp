@@ -4347,13 +4347,35 @@ void QtSoundModem::StartWatchdog()
 	 // Hot-unplug + system-default change handling. QMediaDevices
 	 // emits audioInputsChanged / audioOutputsChanged when the user
 	 // yanks a USB sound dongle or switches the system default.
+	 //
+	 // Qt::QueuedConnection (rather than the default same-thread
+	 // DirectConnection that AutoConnection picks for a same-thread
+	 // emitter+receiver) is critical on macOS 26.4.1 with Qt 6.11:
+	 // these signals fire from inside QtMultimedia's CoreAudio
+	 // listener dispatch (HALPropertyListener::Call →
+	 // QPlatformAudioDevices::updateAudioInputsCache → emit). If our
+	 // slot runs synchronously inside that callback, calling
+	 // m_audioInput->stop() during the teardown branches re-enters
+	 // QtMultimedia, which then calls
+	 // AudioObjectRemovePropertyListenerBlock on a listener block
+	 // that is mid-cache-rebuild — objc_retain dereferences a stale
+	 // block pointer and SIGSEGVs. Queuing the slot defers it until
+	 // control returns to the receiver thread's event loop, outside
+	 // the synchronous CoreAudio/QtMultimedia callback stack that
+	 // emitted the signal. Audio device events fire at human
+	 // timescales so the one-tick delay is invisible; the cached
+	 // device lists we read in the slot (via GetAudioDevices() →
+	 // QMediaDevices::audioInputs()) reflect the latest state when
+	 // the slot eventually runs.
 	 if (!m_mediaDevices)
 	 {
 		 m_mediaDevices = new QMediaDevices(this);
 		 connect(m_mediaDevices, &QMediaDevices::audioInputsChanged,
-			 this, &QtSoundModem::onAudioDevicesChanged);
+			 this, &QtSoundModem::onAudioDevicesChanged,
+			 Qt::QueuedConnection);
 		 connect(m_mediaDevices, &QMediaDevices::audioOutputsChanged,
-			 this, &QtSoundModem::onAudioDevicesChanged);
+			 this, &QtSoundModem::onAudioDevicesChanged,
+			 Qt::QueuedConnection);
 	 }
  }
 
