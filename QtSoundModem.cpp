@@ -4491,10 +4491,14 @@ void QtSoundModem::StartWatchdog()
  // for the Qt5→Qt6 migration. Surface the mismatch loudly via
  // Debugprintf so it lands in the trace pane.
 
- // Captured input rate. Set during initializeAudioIn. PollQSound
- // decimates to 12 kHz before feeding the modem.
+ // Captured input format. Set during initializeAudioIn. PollQSound
+ // decimates to 12 kHz before feeding the modem and broadcasts mono
+ // sources to stereo before decimation so the rate-of-time math stays
+ // honest (a mono Int16 stream reinterpreted as stereo halves the
+ // effective sample rate).
  int g_audioInputRate = 12000;
  int g_audioInputDecim = 1;
+ int g_audioInputChannelCount = 2;
 
  extern "C" void aaFilterInit(int sampleRateIn);
 
@@ -4524,17 +4528,20 @@ void QtSoundModem::StartWatchdog()
  }
 
  // INPUT: the downstream modem code reinterprets the byte stream as
- // Int16. A Float preferredFormat would have its 4-byte float values read
- // as pairs of Int16, producing wildly wrong sample values that the demod
- // cannot recover from — refuse outright. Mono Int16 is also technically
- // wrong (the bytes get reinterpreted as stereo, halving effective time
- // resolution) but the AFSK demod copes empirically, and refusing mono
- // would regress users whose USB radio interfaces enumerate as mono Int16.
- // Until upstream gains explicit channel handling, accept any channel
- // count provided the sample format is Int16.
+ // stereo Int16. A Float preferredFormat would have its 4-byte float
+ // values read as pairs of Int16, producing wildly wrong sample values
+ // that the demod cannot recover from — refuse outright. Mono Int16 is
+ // accepted but PollQSound broadcasts it to stereo before passing to
+ // decimateAudioToModem (each mono sample becomes L=R), so the
+ // sample-rate math stays correct. >2 channels is refused — we'd need
+ // explicit channel-pick logic to know which channel carries the
+ // modem audio, and any device offering surround layouts to a USB
+ // radio interface is misconfigured for this use.
  static bool isCompatibleAudioInputFormat(const QAudioFormat &fmt)
  {
-	 return fmt.sampleFormat() == QAudioFormat::Int16;
+	 if (fmt.sampleFormat() != QAudioFormat::Int16) return false;
+	 const int ch = fmt.channelCount();
+	 return ch == 1 || ch == 2;
  }
 
  // OUTPUT: stricter than input. sendSamplestoQSound writes `n * 4` bytes
@@ -4649,6 +4656,7 @@ void QtSoundModem::StartWatchdog()
 
 		 g_audioInputRate = 12000;
 		 g_audioInputDecim = 1;
+		 g_audioInputChannelCount = 2;
 		 // Clear the device handle so onAudioDevicesChanged's auto-reopen
 		 // path doesn't loop on this device on every device-list emit.
 		 // The user must re-pick from the Devices dialog (correct, since
@@ -4659,6 +4667,12 @@ void QtSoundModem::StartWatchdog()
 
 	 g_audioInputDecim = g_audioInputRate / 12000;
 	 if (g_audioInputDecim < 1) g_audioInputDecim = 1;
+	 // Capture the negotiated channel count. PollQSound branches on
+	 // this — mono input gets broadcast to stereo before decimation
+	 // so the rate math stays correct (a mono Int16 stream
+	 // reinterpreted as stereo halves effective time resolution and
+	 // the demod silently runs at the wrong baud rate).
+	 g_audioInputChannelCount = format.channelCount();
 
 	 // Design (or re-design) the antialias FIR for the negotiated rate.
 	 // No-op if the rate hasn't changed since last call.
@@ -5157,6 +5171,16 @@ extern "C" void PollQSound()
 	// call. The decimation/processing loop below operates on the
 	// captured Buffer and doesn't touch the audio objects, so
 	// holding the lock there would needlessly block teardown.
+	// For mono input, request half the bytes (one mono sample per
+	// output stereo frame instead of two), then expand in place to
+	// stereo before the decimator runs. Without this step the modem
+	// would read the mono byte stream as stereo, halving the
+	// effective sample rate and silently running every demod at
+	// half its intended baud — what the AFSK demod was getting
+	// away with on Stuart's CM108 is a coincidence of audio centre
+	// frequency, not a property of the data path.
+	const bool monoInput = (g_audioInputChannelCount == 1);
+
 	qint64 x;
 	{
 		QMutexLocker locker(&s_audioMutex);
@@ -5166,12 +5190,16 @@ extern "C" void PollQSound()
 		if (in == nullptr)
 			return;
 
+		// `size` is the post-expansion (stereo) byte budget. Mono reads
+		// half that and the expansion below fills in the missing L/R
+		// pairs. The Buffer-overflow clamp uses the post-expansion
+		// figure so the expansion can't run past the end.
 		int size = kAudioPeriodBytes * decim;
-
 		if (BufferLen + size > (int)sizeof(Buffer))
 			size = (int)sizeof(Buffer) - BufferLen;
 
-		x = in->read(&Buffer[BufferLen], size);
+		const int requestSize = monoInput ? size / 2 : size;
+		x = in->read(&Buffer[BufferLen], requestSize);
 	}
 
 	// QIODevice::read returns -1 on error (device gone, hot-unplug
@@ -5179,7 +5207,24 @@ extern "C" void PollQSound()
 	// BufferLen alone — adding -1 would walk &Buffer[-1] into the
 	// heap on the next read.
 	if (x > 0)
+	{
+		if (monoInput)
+		{
+			// Walk the mono samples backwards so each write lands at
+			// a position the loop has not yet sourced from. After this,
+			// `x` doubled bytes occupy [BufferLen, BufferLen + 2x).
+			short * base = (short *)&Buffer[BufferLen];
+			const int monoSamples = (int)(x / sizeof(short));
+			for (int i = monoSamples - 1; i >= 0; i--)
+			{
+				short s = base[i];
+				base[i * 2]     = s;
+				base[i * 2 + 1] = s;
+			}
+			x *= 2;
+		}
 		BufferLen += (int)x;
+	}
 
 	// Earlier code had an early-return when bytesAvailable() exceeded
 	// 16384*decim, intended as a "let it drain on subsequent calls"
