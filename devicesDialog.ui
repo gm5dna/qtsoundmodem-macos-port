@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>601</width>
+    <width>621</width>
     <height>769</height>
    </rect>
   </property>
@@ -21,7 +21,7 @@
     <rect>
      <x>10</x>
      <y>-90</y>
-     <width>581</width>
+     <width>601</width>
      <height>751</height>
     </rect>
    </property>
@@ -39,7 +39,7 @@
      <rect>
       <x>0</x>
       <y>0</y>
-      <width>571</width>
+      <width>591</width>
       <height>745</height>
      </rect>
     </property>
@@ -48,7 +48,7 @@
       <rect>
        <x>5</x>
        <y>10</y>
-       <width>571</width>
+       <width>586</width>
        <height>361</height>
       </rect>
      </property>
@@ -190,7 +190,7 @@
        <rect>
         <x>72</x>
         <y>170</y>
-        <width>86</width>
+        <width>100</width>
         <height>20</height>
        </rect>
       </property>
@@ -231,9 +231,9 @@
      <widget class="QComboBox" name="Modem_2_Chan">
       <property name="geometry">
        <rect>
-        <x>180</x>
+        <x>205</x>
         <y>170</y>
-        <width>86</width>
+        <width>100</width>
         <height>20</height>
        </rect>
       </property>
@@ -256,7 +256,7 @@
      <widget class="QLabel" name="label_13">
       <property name="geometry">
        <rect>
-        <x>165</x>
+        <x>178</x>
         <y>172</y>
         <width>21</width>
         <height>16</height>
@@ -379,9 +379,9 @@
      <widget class="QComboBox" name="Modem_3_Chan">
       <property name="geometry">
        <rect>
-        <x>290</x>
+        <x>338</x>
         <y>170</y>
-        <width>86</width>
+        <width>100</width>
         <height>20</height>
        </rect>
       </property>
@@ -404,7 +404,7 @@
      <widget class="QLabel" name="label_14">
       <property name="geometry">
        <rect>
-        <x>272</x>
+        <x>311</x>
         <y>172</y>
         <width>21</width>
         <height>16</height>
@@ -417,7 +417,7 @@
      <widget class="QLabel" name="label_15">
       <property name="geometry">
        <rect>
-        <x>385</x>
+        <x>444</x>
         <y>172</y>
         <width>21</width>
         <height>16</height>
@@ -430,9 +430,9 @@
      <widget class="QComboBox" name="Modem_4_Chan">
       <property name="geometry">
        <rect>
-        <x>400</x>
+        <x>471</x>
         <y>170</y>
-        <width>86</width>
+        <width>100</width>
         <height>20</height>
        </rect>
       </property>
@@ -470,7 +470,7 @@
        <rect>
         <x>262</x>
         <y>252</y>
-        <width>63</width>
+        <width>78</width>
         <height>22</height>
        </rect>
       </property>
@@ -498,9 +498,9 @@
      <widget class="QComboBox" name="WaterfallMax">
       <property name="geometry">
        <rect>
-        <x>376</x>
+        <x>386</x>
         <y>252</y>
-        <width>63</width>
+        <width>78</width>
         <height>22</height>
        </rect>
       </property>
@@ -546,7 +546,7 @@
      <widget class="QLabel" name="label_16">
       <property name="geometry">
        <rect>
-        <x>348</x>
+        <x>350</x>
         <y>254</y>
         <width>31</width>
         <height>17</height>
@@ -614,7 +614,7 @@
       <rect>
        <x>10</x>
        <y>380</y>
-       <width>561</width>
+       <width>581</width>
        <height>161</height>
       </rect>
      </property>
@@ -898,7 +898,7 @@
       <rect>
        <x>10</x>
        <y>550</y>
-       <width>551</width>
+       <width>581</width>
        <height>141</height>
       </rect>
      </property>
@@ -910,7 +910,7 @@
        <rect>
         <x>122</x>
         <y>20</y>
-        <width>145</width>
+        <width>180</width>
         <height>22</height>
        </rect>
       </property>
@@ -1049,7 +1049,7 @@
      <widget class="QRadioButton" name="RTS">
       <property name="geometry">
        <rect>
-        <x>220</x>
+        <x>312</x>
         <y>22</y>
         <width>61</width>
         <height>18</height>
@@ -1062,7 +1062,7 @@
      <widget class="QRadioButton" name="CAT">
       <property name="geometry">
        <rect>
-        <x>410</x>
+        <x>527</x>
         <y>22</y>
         <width>53</width>
         <height>18</height>
@@ -1098,7 +1098,7 @@
      <widget class="QRadioButton" name="RTSDTR">
       <property name="geometry">
        <rect>
-        <x>323</x>
+        <x>439</x>
         <y>22</y>
         <width>81</width>
         <height>18</height>
@@ -1114,7 +1114,7 @@
      <widget class="QRadioButton" name="DTR">
       <property name="geometry">
        <rect>
-        <x>270</x>
+        <x>381</x>
         <y>22</y>
         <width>51</width>
         <height>18</height>
