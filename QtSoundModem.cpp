@@ -4785,6 +4785,17 @@ void QtSoundModem::StartWatchdog()
 	 s_lastWarnedOutDev.clear();
  }
 
+ // Predicate for the C side (MacBits.c::SoundFlush) to detect that the
+ // output sink was never opened (refused by initializeAudioOut, or torn
+ // down by hot-unplug). Without it, SoundFlush would wait the full 5 s
+ // SoundIsPlaying timeout on every transmit attempt because the
+ // audioOutStateChanged slot never fires when there is no QAudioSink.
+ extern "C" int isAudioOutputOpen()
+ {
+	 QMutexLocker locker(&s_audioMutex);
+	 return (m_audioOutput && out) ? 1 : 0;
+ }
+
  void QtSoundModem::closeQSound()
  {
 	 // Null-safe: onAudioDevicesChanged() may have already torn the
