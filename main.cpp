@@ -29,7 +29,9 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 #include <QStandardPaths>
 #include <QDir>
 #include <QDebug>
+#include <errno.h>
 #include <limits.h>
+#include <string.h>
 #include <unistd.h>
 #endif
 
@@ -132,19 +134,31 @@ int main(int argc, char *argv[])
 	// --dump-input with a relative path silently fail to open from
 	// the AppData cwd. strdup is fine — these strings live for the
 	// lifetime of the process.
-	auto canonicaliseCliPath = [](char *& p)
+	//
+	// All failure paths are fatal: the user explicitly asked for the
+	// path on the command line. Silently keeping the relative form
+	// would land us back in the chdir-broken state this commit set
+	// out to fix.
+	auto canonicaliseCliPath = [](char *& p, const char * argName)
 	{
 		if (!p || p[0] == '/') return;  // null or already absolute
 		char cwd[PATH_MAX];
-		if (!getcwd(cwd, sizeof(cwd))) return;
+		if (!getcwd(cwd, sizeof(cwd)))
+			qFatal("%s: getcwd failed canonicalising '%s' (%s)",
+				argName, p, strerror(errno));
 		char joined[PATH_MAX];
 		int n = snprintf(joined, sizeof(joined), "%s/%s", cwd, p);
-		if (n <= 0 || n >= (int)sizeof(joined)) return;  // truncated
-		p = strdup(joined);
+		if (n <= 0 || n >= (int)sizeof(joined))
+			qFatal("%s: cwd+path exceeds PATH_MAX while canonicalising '%s'",
+				argName, p);
+		char * dup = strdup(joined);
+		if (!dup)
+			qFatal("%s: strdup failed canonicalising '%s'", argName, p);
+		p = dup;
 	};
-	canonicaliseCliPath(g_wavInputPath);
-	canonicaliseCliPath(g_wavInputNativePath);
-	canonicaliseCliPath(g_dumpInputPath);
+	canonicaliseCliPath(g_wavInputPath,       "--decode-wav");
+	canonicaliseCliPath(g_wavInputNativePath, "--decode-wav-native");
+	canonicaliseCliPath(g_dumpInputPath,      "--dump-input");
 
 	// Config / Save Settings open "QtSoundModem.ini" via a *relative*
 	// path. Linux/Windows users launch from the install dir so the
