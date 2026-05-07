@@ -464,6 +464,8 @@ short * SoundInit(void)
 	return (short *)QtDMABuffer;
 }
 
+extern int isAudioOutputOpen(void);
+
 void SoundFlush(void)
 {
 	// End-of-frame flush. SMMain.c accumulates samples into
@@ -475,6 +477,20 @@ void SoundFlush(void)
 
 	if (SoundMode != 5)
 		return;
+
+	// If the output sink was refused by initializeAudioOut or torn
+	// down by hot-unplug, sendSamplestoQSound is a no-op and
+	// audioOutStateChanged will never fire IdleState — the
+	// SoundIsPlaying flag would stay TRUE and the loop below would
+	// burn the full 5 s timeout on every transmit. Clear the flag
+	// and bail immediately. The earlier SMMain.c TX path has
+	// already done its work; there's just no sink to drain.
+	if (!isAudioOutputOpen())
+	{
+		Number = 0;
+		SoundIsPlaying = 0;
+		return;
+	}
 
 	if (Number > 0)
 	{
