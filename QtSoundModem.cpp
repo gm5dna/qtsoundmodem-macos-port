@@ -5216,13 +5216,19 @@ extern "C" void PollQSound()
 			minL = maxL = minR = maxR = 0;
 		}
 
-		ProcessNewSamples(processed, processedFrames);
-
 #if defined(Q_OS_MACOS)
-		// Dump whatever the modem saw, with a matching WAV header.
+		// Dump BEFORE ProcessNewSamples. BufferFull mutates the input
+		// buffer in place on the using48000=1 path (sm_main.c:1003-1006
+		// rewrites the first quarter of Samples[] with the downsampled
+		// 12 kHz frames it just produced), so dumping after would
+		// capture a hybrid of downsampled-leading-frames and
+		// raw-trailing-frames at a 48 kHz sample-rate header — useless.
+		// The decimated path is safe in either order (BufferFull doesn't
+		// touch the buffer when using48000=0), but doing the dump
+		// uniformly up front keeps the rule simple.
 		// dumpInputOpen() is no-op after the first call, so the
 		// rate-at-first-call wins for the lifetime of the dump file —
-		// matches our live-audio assumption that the RUH/non-RUH mode
+		// matches the live-audio assumption that RUH/non-RUH mode
 		// doesn't change mid-capture.
 		if (g_dumpInputPath)
 		{
@@ -5230,6 +5236,15 @@ extern "C" void PollQSound()
 			dumpInputWrite(processed, processedFrames * 2 * sizeof(short));
 		}
 #endif
+
+		// Note: BufferFull reads the global `using48000` directly while
+		// `nativeRUHPath` is captured once per PollQSound call. If the
+		// user reconfigures a modem into/out of RUH mode mid-call, the
+		// routing here and BufferFull's interpretation could disagree
+		// for one chunk. Accepted as a known minor inconsistency —
+		// modem reconfiguration restarts audio anyway, so the window
+		// is small.
+		ProcessNewSamples(processed, processedFrames);
 
 		BufferLen -= inChunkBytes;
 		memmove(Buffer, Buffer + inChunkBytes, BufferLen);
