@@ -29,6 +29,8 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 #include <QStandardPaths>
 #include <QDir>
 #include <QDebug>
+#include <limits.h>
+#include <unistd.h>
 #endif
 
 extern "C" int nonGUIMode;
@@ -125,6 +127,25 @@ int main(int argc, char *argv[])
 		a = new QApplication(argc, argv);			// GUI version
 
 #if defined(Q_OS_MACOS)
+	// Canonicalise CLI paths against the launching shell's cwd BEFORE
+	// the chdir below. Otherwise --decode-wav / --decode-wav-native /
+	// --dump-input with a relative path silently fail to open from
+	// the AppData cwd. strdup is fine — these strings live for the
+	// lifetime of the process.
+	auto canonicaliseCliPath = [](char *& p)
+	{
+		if (!p || p[0] == '/') return;  // null or already absolute
+		char cwd[PATH_MAX];
+		if (!getcwd(cwd, sizeof(cwd))) return;
+		char joined[PATH_MAX];
+		int n = snprintf(joined, sizeof(joined), "%s/%s", cwd, p);
+		if (n <= 0 || n >= (int)sizeof(joined)) return;  // truncated
+		p = strdup(joined);
+	};
+	canonicaliseCliPath(g_wavInputPath);
+	canonicaliseCliPath(g_wavInputNativePath);
+	canonicaliseCliPath(g_dumpInputPath);
+
 	// Config / Save Settings open "QtSoundModem.ini" via a *relative*
 	// path. Linux/Windows users launch from the install dir so the
 	// cwd happens to be writable; a Finder-launched .app has cwd=/
