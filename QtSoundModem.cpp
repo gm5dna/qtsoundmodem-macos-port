@@ -770,24 +770,39 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	ui.RXLevel2->setPixmap(QPixmap::fromImage(*RXLevel2));
 	RXLevel2Copy = ui.RXLevel2;
 
+	// DCD red-square indicators. Upstream hard-codes them at
+	// (280, 31) / (575, 31) / (280, 61) / (575, 61) — Y values that
+	// land in the gap between modem rows (row 1 is y=6-28 in
+	// QtSoundModem.ui, row 2 is y=31-53), so the LEDs always
+	// appeared visibly displaced below the modem they belong to.
+	// Position them dynamically against the actual rendered
+	// row geometry so the LED is vertically centred next to its
+	// modem regardless of any future .ui tweaks.
+	const int dcdSize = 12;
+	auto centerOnRow = [dcdSize](QWidget * row) {
+		return row->y() + (row->height() - dcdSize) / 2;
+	};
+	const int rowAY = centerOnRow(ui.modeA);
+	const int rowCY = centerOnRow(ui.modeC);
+
 	DCDLabel[0] = new QLabel(this);
 	DCDLabel[0]->setObjectName(QString::fromUtf8("DCDLedA"));
-	DCDLabel[0]->setGeometry(QRect(280, 31, 12, 12));
+	DCDLabel[0]->setGeometry(QRect(280, rowAY, dcdSize, dcdSize));
 	DCDLabel[0]->setVisible(TRUE);
 
 	DCDLabel[1] = new QLabel(this);
 	DCDLabel[1]->setObjectName(QString::fromUtf8("DCDLedB"));
-	DCDLabel[1]->setGeometry(QRect(575, 31, 12, 12));
+	DCDLabel[1]->setGeometry(QRect(575, rowAY, dcdSize, dcdSize));
 	DCDLabel[1]->setVisible(TRUE);
 
 	DCDLabel[2] = new QLabel(this);
 	DCDLabel[2]->setObjectName(QString::fromUtf8("DCDLedC"));
-	DCDLabel[2]->setGeometry(QRect(280, 61, 12, 12));
+	DCDLabel[2]->setGeometry(QRect(280, rowCY, dcdSize, dcdSize));
 	DCDLabel[2]->setVisible(FALSE);
 
 	DCDLabel[3] = new QLabel(this);
 	DCDLabel[3]->setObjectName(QString::fromUtf8("DCDLedD"));
-	DCDLabel[3]->setGeometry(QRect(575, 61, 12, 12));
+	DCDLabel[3]->setGeometry(QRect(575, rowCY, dcdSize, dcdSize));
 	DCDLabel[3]->setVisible(FALSE);
 	
 	DCDLed[0] = new QImage(12, 12, QImage::Format_RGB32);
