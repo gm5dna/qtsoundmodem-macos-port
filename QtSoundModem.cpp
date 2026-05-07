@@ -731,18 +731,24 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	actWaterfall1 = setupMenuLine(viewMenu, (char *)"First waterfall", this, Firstwaterfall);
 	actWaterfall2 = setupMenuLine(viewMenu, (char *)"Second Waterfall", this, Secondwaterfall);
 
-	actCalib = ui.menuBar->addAction("&Calibration");
+	// macOS QMenuBar only renders QMenu submenus at the top level —
+	// QActions added directly via addAction() are silently dropped.
+	// Group action-style entries under a real submenu so they appear.
+	QMenu *toolsMenu = ui.menuBar->addMenu(tr("&Tools"));
+
+	actCalib = toolsMenu->addAction("&Calibration");
 	actCalib->setMenuRole(QAction::NoRole);
 	connect(actCalib, SIGNAL(triggered()), this, SLOT(doCalibrate()));
 
-	actRestartWF = ui.menuBar->addAction("Restart Waterfall");
+	actRestartWF = toolsMenu->addAction("Restart Waterfall");
 	actRestartWF->setMenuRole(QAction::NoRole);
 	connect(actRestartWF, SIGNAL(triggered()), this, SLOT(doRestartWF()));
 
 	actAbout = ui.menuBar->addAction("&About");
-	// About is fine to keep its default AboutRole — that's the
-	// macOS-native behaviour ("About QtSoundModem" appears under
-	// the app menu, where users expect it).
+	// About is fine to keep Qt's default TextHeuristicRole — the
+	// "About" text triggers the macOS-native heuristic that routes
+	// it into the application menu as "About QtSoundModem", where
+	// users expect it.
 	connect(actAbout, SIGNAL(triggered()), this, SLOT(doAbout()));
 
 	RXLevel = new QImage(150, 10, QImage::Format_RGB32);
