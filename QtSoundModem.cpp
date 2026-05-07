@@ -5119,7 +5119,7 @@ extern "C" void PollQSound()
 	// call. The decimation/processing loop below operates on the
 	// captured Buffer and doesn't touch the audio objects, so
 	// holding the lock there would needlessly block teardown.
-	int x;
+	qint64 x;
 	{
 		QMutexLocker locker(&s_audioMutex);
 		if (!m_audioInput)
@@ -5136,7 +5136,12 @@ extern "C" void PollQSound()
 		x = in->read(&Buffer[BufferLen], size);
 	}
 
-	BufferLen += x;
+	// QIODevice::read returns -1 on error (device gone, hot-unplug
+	// race) and 0 if no data was available. Either way, leave
+	// BufferLen alone — adding -1 would walk &Buffer[-1] into the
+	// heap on the next read.
+	if (x > 0)
+		BufferLen += (int)x;
 
 	// Earlier code had an early-return when bytesAvailable() exceeded
 	// 16384*decim, intended as a "let it drain on subsequent calls"
