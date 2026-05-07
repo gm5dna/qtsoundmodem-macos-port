@@ -272,6 +272,15 @@ int AvBusy[4] = { 0 };
 QList<QAudioDevice> inputDevices;
 QList<QAudioDevice> outputDevices;
 
+// Parallel filtered lists, indices aligned with the Devices-dialog combo
+// boxes. inputDevices/outputDevices remain the unfiltered source-of-truth
+// (used by the matching loops in GetAudioDevices). The combos are
+// populated from CaptureNames/PlaybackNames which skip "surround" entries,
+// so a combo currentIndex can't be used to index the unfiltered lists —
+// it must index these filtered lists instead.
+QList<QAudioDevice> inputDevicesFiltered;
+QList<QAudioDevice> outputDevicesFiltered;
+
 QAudioDevice inDeviceInfo;
 QAudioDevice outDeviceInfo;
 
@@ -2562,9 +2571,14 @@ void QtSoundModem::deviceaccept()
 	// the only thing that trips cardChanged for that case — without
 	// it the in-session reopen below is skipped and the new device
 	// is not opened until the next launch.
-	if (CaptureIndex >= 0 && CaptureIndex < inputDevices.size())
+	// Combo index lines up with the filtered list (which has surround
+	// devices skipped, mirroring the combo population). Using the
+	// unfiltered list here would silently shift selections by the count
+	// of surround entries before this device, so the saved id is for
+	// the wrong device.
+	if (CaptureIndex >= 0 && CaptureIndex < inputDevicesFiltered.size())
 	{
-		QByteArray idB64 = inputDevices[CaptureIndex].id().toBase64();
+		QByteArray idB64 = inputDevicesFiltered[CaptureIndex].id().toBase64();
 		if (idB64.size() >= (qsizetype)sizeof(CaptureDeviceId))
 		{
 			Debugprintf("WARNING: capture device id (%lld bytes) exceeds "
@@ -2595,9 +2609,12 @@ void QtSoundModem::deviceaccept()
 
 #if defined(Q_OS_MACOS)
 	// See CaptureDeviceId comment above for the cardChanged rationale.
-	if (PlayBackIndex >= 0 && PlayBackIndex < outputDevices.size())
+	// Index against the filtered list (combo is populated from
+	// PlaybackNames, which skips surround entries); see CaptureIndex
+	// site above for the rationale.
+	if (PlayBackIndex >= 0 && PlayBackIndex < outputDevicesFiltered.size())
 	{
-		QByteArray idB64 = outputDevices[PlayBackIndex].id().toBase64();
+		QByteArray idB64 = outputDevicesFiltered[PlayBackIndex].id().toBase64();
 		if (idB64.size() >= (qsizetype)sizeof(PlaybackDeviceId))
 		{
 			Debugprintf("WARNING: playback device id (%lld bytes) exceeds "
@@ -2796,30 +2813,35 @@ void QtSoundModem::deviceaccept()
 		if (SoundMode == 5)
 		{
 			// A hot-unplug delivered while the Devices dialog was open
-			// could have shrunk inputDevices / outputDevices through
-			// onAudioDevicesChanged → GetAudioDevices, leaving the
+			// could have shrunk inputDevicesFiltered / outputDevicesFiltered
+			// through onAudioDevicesChanged → GetAudioDevices, leaving the
 			// indices we captured at OK time pointing past the end.
 			// Skip the reopen rather than crashing in operator[]; the
 			// user can reopen the dialog and re-pick from the current
 			// list. Settings are already saved at this point so the
 			// id-based persistence will pick up the right device on
 			// next launch.
-			if (CaptureIndex < 0 || CaptureIndex >= inputDevices.size() ||
-				PlayBackIndex < 0 || PlayBackIndex >= outputDevices.size())
+			//
+			// Index against the *filtered* lists — CaptureIndex came
+			// from a combo populated from CaptureNames (surround
+			// entries skipped), so the unfiltered inputDevices list
+			// would shift selections by the count of skipped entries.
+			if (CaptureIndex < 0 || CaptureIndex >= inputDevicesFiltered.size() ||
+				PlayBackIndex < 0 || PlayBackIndex >= outputDevicesFiltered.size())
 			{
 				Debugprintf("Audio device list changed while Devices dialog "
 					"was open (CaptureIndex=%d, count=%lld; PlayBackIndex=%d, "
 					"count=%lld); skipping reopen — please re-pick from "
 					"Settings → Devices",
-					CaptureIndex, (long long)inputDevices.size(),
-					PlayBackIndex, (long long)outputDevices.size());
+					CaptureIndex, (long long)inputDevicesFiltered.size(),
+					PlayBackIndex, (long long)outputDevicesFiltered.size());
 			}
 			else
 			{
 				closeQSound();
 
-				inDeviceInfo = inputDevices[CaptureIndex];
-				outDeviceInfo = outputDevices[PlayBackIndex];
+				inDeviceInfo = inputDevicesFiltered[CaptureIndex];
+				outDeviceInfo = outputDevicesFiltered[PlayBackIndex];
 				initializeAudioOut(outDeviceInfo);
 				initializeAudioIn(inDeviceInfo);
 			}
@@ -4088,6 +4110,7 @@ void QtSoundModem::StartWatchdog()
 		 outDeviceInfo = QMediaDevices::defaultAudioOutput();
 
 	 CaptureCount = 0;
+	 inputDevicesFiltered.clear();
 	 Debugprintf("Capture Devices:");
 
 	 for (int i = 0; i < inputDevices.count(); ++i)
@@ -4098,6 +4121,7 @@ void QtSoundModem::StartWatchdog()
 		 {
 			 qstrncpy(CaptureNames[CaptureCount], deviceName.toUtf8().constData(),
 				 sizeof(CaptureNames[CaptureCount]));
+			 inputDevicesFiltered.append(inputDevices[i]);
 
 			 bool matched = false;
 #if defined(Q_OS_MACOS)
@@ -4136,6 +4160,7 @@ void QtSoundModem::StartWatchdog()
 	 }
 
 	 PlaybackCount = 0;
+	 outputDevicesFiltered.clear();
 	 Debugprintf("Playback Devices:");
 
 	 for (int i = 0; i < outputDevices.count(); ++i)
@@ -4146,6 +4171,7 @@ void QtSoundModem::StartWatchdog()
 		 {
 			 qstrncpy(PlaybackNames[PlaybackCount], deviceName.toUtf8().constData(),
 				 sizeof(PlaybackNames[PlaybackCount]));
+			 outputDevicesFiltered.append(outputDevices[i]);
 
 			 bool matched = false;
 #if defined(Q_OS_MACOS)
