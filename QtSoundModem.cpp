@@ -4881,7 +4881,7 @@ extern "C" char * g_dumpInputPath;
 static FILE * s_dumpFile = nullptr;
 static long s_dumpDataBytes = 0;
 
-static void dumpInputOpen()
+static void dumpInputOpen(int sampleRate)
 {
 	if (s_dumpFile || !g_dumpInputPath) return;
 	s_dumpFile = fopen(g_dumpInputPath, "wb");
@@ -4889,6 +4889,7 @@ static void dumpInputOpen()
 		Debugprintf("dump-input: open %s failed", g_dumpInputPath);
 		return;
 	}
+	const unsigned int byteRate = (unsigned int)sampleRate * 4;  // 2ch * 2byte
 	// Canonical 44-byte WAV header. Chunk sizes patched at close.
 	unsigned char hdr[44] = {
 		'R','I','F','F', 0,0,0,0,
@@ -4896,17 +4897,17 @@ static void dumpInputOpen()
 		16,0,0,0,           // fmt chunk size
 		1,0,                // PCM
 		2,0,                // 2 channels
-		(unsigned char)(12000 & 0xFF), (unsigned char)((12000>>8)&0xFF),
-		(unsigned char)((12000>>16)&0xFF), (unsigned char)((12000>>24)&0xFF),
-		(unsigned char)(48000 & 0xFF), (unsigned char)((48000>>8)&0xFF),
-		(unsigned char)((48000>>16)&0xFF), (unsigned char)((48000>>24)&0xFF),
+		(unsigned char)(sampleRate & 0xFF), (unsigned char)((sampleRate>>8)&0xFF),
+		(unsigned char)((sampleRate>>16)&0xFF), (unsigned char)((sampleRate>>24)&0xFF),
+		(unsigned char)(byteRate & 0xFF), (unsigned char)((byteRate>>8)&0xFF),
+		(unsigned char)((byteRate>>16)&0xFF), (unsigned char)((byteRate>>24)&0xFF),
 		4,0,                // block align (2ch * 2byte)
 		16,0,               // bits per sample
 		'd','a','t','a', 0,0,0,0
 	};
 	fwrite(hdr, 1, 44, s_dumpFile);
 	s_dumpDataBytes = 0;
-	Debugprintf("dump-input: writing to %s", g_dumpInputPath);
+	Debugprintf("dump-input: writing to %s @ %d Hz", g_dumpInputPath, sampleRate);
 }
 
 static void dumpInputWrite(const void * data, size_t bytes)
@@ -5153,19 +5154,44 @@ extern "C" void PollQSound()
 
 	short decimated[1024];  // 512 stereo frames
 
+	// RUH/dw9600 demod is hard-wired at 48 kHz baseband. The FIR-decimated
+	// 12 kHz path destroys G3RUH timing — confirmed by the
+	// --decode-wav-native harness (commit c7cf301), which decodes RUH
+	// content correctly only by feeding raw 48 kHz to BufferFull. The
+	// live path needs the same routing: when `using48000` is set (any
+	// RUH48/RUH96 modem active) AND the device is genuinely at 48 kHz,
+	// hand ProcessNewSamples the native stream and let BufferFull's
+	// runModems branch downsample 4× internally for FSK channels while
+	// leaving the RUH branch at native rate. If a RUH modem is selected
+	// but the device only offers 12 kHz (decim != 4), RUH won't work
+	// either way — fall through to the FIR path so non-RUH channels at
+	// least decode.
+	const bool nativeRUHPath = (using48000 && decim == 4);
+
 	while (BufferLen >= inChunkBytes)
 	{
 		short * src = (short *)Buffer;
+		short * processed;
+		int     processedFrames;
 
-		decimateAudioToModem(src, decim, decimated);
-
-		// Level tracking on the decimator output (post-LPF, post-decim).
-		// Done after the helper so the level meters reflect what the
-		// modem actually sees, not the raw native-rate input.
-		for (int i = 0; i < 512; i++)
+		if (nativeRUHPath)
 		{
-			short outL = decimated[2 * i];
-			short outR = decimated[2 * i + 1];
+			processed       = src;
+			processedFrames = 2048;  // 48 kHz stereo, one PollQSound chunk
+		}
+		else
+		{
+			decimateAudioToModem(src, decim, decimated);
+			processed       = decimated;
+			processedFrames = 512;
+		}
+
+		// Level tracking on whatever we are actually feeding the modem.
+		// Stereo frame loop regardless of rate — peaks are peaks.
+		for (int i = 0; i < processedFrames; i++)
+		{
+			short outL = processed[2 * i];
+			short outR = processed[2 * i + 1];
 			if (outL < minL) minL = outL;
 			else if (outL > maxL) maxL = outL;
 			if (outR < minR) minR = outR;
@@ -5190,17 +5216,18 @@ extern "C" void PollQSound()
 			minL = maxL = minR = maxR = 0;
 		}
 
-		ProcessNewSamples(decimated, 512);
+		ProcessNewSamples(processed, processedFrames);
 
 #if defined(Q_OS_MACOS)
-		// Dump POST-decimation, so the 12 kHz stereo Int16 WAV header
-		// in dumpInputOpen() is honest. Writing pre-decimation bytes
-		// at native 24/48 kHz under a 12 kHz header would mislabel the
-		// file by 2-4× and break --decode-wav playback.
+		// Dump whatever the modem saw, with a matching WAV header.
+		// dumpInputOpen() is no-op after the first call, so the
+		// rate-at-first-call wins for the lifetime of the dump file —
+		// matches our live-audio assumption that the RUH/non-RUH mode
+		// doesn't change mid-capture.
 		if (g_dumpInputPath)
 		{
-			dumpInputOpen();
-			dumpInputWrite(decimated, sizeof(decimated));
+			dumpInputOpen(nativeRUHPath ? 48000 : 12000);
+			dumpInputWrite(processed, processedFrames * 2 * sizeof(short));
 		}
 #endif
 
