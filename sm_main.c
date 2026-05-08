@@ -1212,13 +1212,16 @@ char FrameData[1024] = "";
 
 char * frame_monitor(string * frame, char * code, int tx_stat)
 {
-	char mon_frm[512];
+	// Mirror of AGW_frame_monitor in ax25_agw.c. IL2P payloads can carry
+	// up to 1023 bytes before filtering; sized for IL2P worst case plus
+	// path/framing.
+	char mon_frm[2048];
 	char AGW_path[256];
 	string * AGW_data;
 
 	const Byte * frm = "???";
 	Byte * datap;
-	Byte _data[512] = "";
+	Byte _data[1280] = "";
 	Byte * p_data = _data;
 	int _datalen;
 
@@ -1264,14 +1267,18 @@ char * frame_monitor(string * frame, char * code, int tx_stat)
 	//		data = parse_ARP(data);
 		//
 
+	// Bound the filter against the destination buffer; IL2P payloads
+	// can exceed _data size and would otherwise stack-smash before
+	// reaching the snprintf. Reserve one byte for the NUL terminator.
 	if (len > 0)
 	{
-		for (i = 0; i < len; i++)
+		for (i = 0; i < len && (p_data - _data) < (int)sizeof(_data) - 1; i++)
 		{
 			if (datap[i] > 31 || datap[i] == 13 || datap[i] == 9)
 				*(p_data++) = datap[i];
 		}
 	}
+	*p_data = 0;
 
 	_datalen = p_data - _data;
 
@@ -1280,17 +1287,18 @@ char * frame_monitor(string * frame, char * code, int tx_stat)
 		Byte * ptr = _data;
 		i = 0;
 
-		// remove successive cr or cr on end		while (i < _datalen)
+		// remove successive cr or cr on end. Guard the i+1 read; the
+		// upstream version walked past the array on the last byte.
 
 		while (i < _datalen)
 		{
-			if ((_data[i] == 13) && (_data[i + 1] == 13))
+			if (i + 1 < _datalen && _data[i] == 13 && _data[i + 1] == 13)
 				i++;
 			else
 				*(ptr++) = _data[i++];
 		}
 
-		if (*(ptr - 1) == 13)
+		if (ptr > _data && *(ptr - 1) == 13)
 			ptr--;
 
 		*ptr = 0;
@@ -1389,9 +1397,9 @@ char * frame_monitor(string * frame, char * code, int tx_stat)
 	}
 
 	if (Digi[0])
-		sprintf(AGW_path, "Fm %s To %s Via %s <%s %c%s",CallFrom, CallTo, Digi, frm, c, p);
+		snprintf(AGW_path, sizeof(AGW_path), "Fm %s To %s Via %s <%s %c%s", CallFrom, CallTo, Digi, frm, c, p);
 	else
-		sprintf(AGW_path, "Fm %s To %s <%s %c %s", CallFrom, CallTo, frm, c, p);
+		snprintf(AGW_path, sizeof(AGW_path), "Fm %s To %s <%s %c %s", CallFrom, CallTo, frm, c, p);
 
 
 	switch (f_type)
@@ -1399,7 +1407,7 @@ char * frame_monitor(string * frame, char * code, int tx_stat)
 	case I_FRM:
 
 		//mon_frm = AGW_path + ctrl + ' R' + inttostr(nr) + ' S' + inttostr(ns) + ' pid=' + dec2hex(pid) + ' Len=' + inttostr(len) + ' >' + time_now + #13 + _data + #13#13;
-		sprintf(mon_frm, "%s R%d S%d pid=%X Len=%d>[%s%c]%s\r%s\r", AGW_path, nr, ns, pid, len, ShortDateTime(), TR, codestr, _data);
+		snprintf(mon_frm, sizeof(mon_frm), "%s R%d S%d pid=%X Len=%d>[%s%c]%s\r%s\r", AGW_path, nr, ns, pid, len, ShortDateTime(), TR, codestr, _data);
 
 		break;
 
@@ -1407,26 +1415,26 @@ char * frame_monitor(string * frame, char * code, int tx_stat)
 
 		if (f_id == U_UI)
 		{
-			sprintf(mon_frm, "%s pid=%X Len=%d>[%s%c]%s\r%s\r", AGW_path, pid, len, ShortDateTime(), TR, codestr, _data); // "= AGW_path + ctrl + '>' + time_now + #13;
+			snprintf(mon_frm, sizeof(mon_frm), "%s pid=%X Len=%d>[%s%c]%s\r%s\r", AGW_path, pid, len, ShortDateTime(), TR, codestr, _data);
 		}
 		else if (f_id == U_FRMR)
 		{
-			sprintf(mon_frm, "%s>%02x %02x %02x[%s]\r", AGW_path, datap[0], datap[1], datap[2], ShortDateTime()); // "= AGW_path + ctrl + '>' + time_now + #13;
+			snprintf(mon_frm, sizeof(mon_frm), "%s>%02x %02x %02x[%s]\r", AGW_path, datap[0], datap[1], datap[2], ShortDateTime());
 		}
 		else
-			sprintf(mon_frm, "%s>[%s%c]%s\r", AGW_path, ShortDateTime(), TR, codestr); // "= AGW_path + ctrl + '>' + time_now + #13;
+			snprintf(mon_frm, sizeof(mon_frm), "%s>[%s%c]%s\r", AGW_path, ShortDateTime(), TR, codestr);
 
 		break;
 
 	case S_FRM:
 
 		//		mon_frm = AGW_path + ctrl + ' R' + inttostr(nr) + ' >' + time_now + #13;
-		sprintf(mon_frm, "%s R%d>[%s%c]%s\r", AGW_path, nr, ShortDateTime(), TR, codestr); // "= AGW_path + ctrl + '>' + time_now + #13;
+		snprintf(mon_frm, sizeof(mon_frm), "%s R%d>[%s%c]%s\r", AGW_path, nr, ShortDateTime(), TR, codestr);
 
 		break;
 
 	}
-	sprintf(FrameData, "%s", mon_frm);
+	snprintf(FrameData, sizeof(FrameData), "%s", mon_frm);
 	return FrameData;
 }
 

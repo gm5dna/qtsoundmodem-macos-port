@@ -513,7 +513,7 @@ int refreshModems = 0;
 
 /*
 
-+ 00 On air baud rate(0 = 1200 / 1 = 2400 / 2 = 4800 / 3 = 9600…)
++ 00 On air baud rate(0 = 1200 / 1 = 2400 / 2 = 4800 / 3 = 9600ï¿½)
 + 01 Traffic level(if 0xFF the port is not in autoupdate mode)
 + 02 TX Delay
 + 03 TX Tail
@@ -1129,13 +1129,17 @@ void AGW_AX25_disc(TAX25Port * AX25Sess, Byte mode)
 
 void AGW_frame_monitor(Byte snd_ch, Byte * path, string * data, Byte pid, Byte nr, Byte ns, Byte f_type, Byte f_id, Byte  rpt, Byte pf, Byte cr, Byte RX)
 {
-	char mon_frm[512];
+	// IL2P payloads can carry up to IL2P_MAX_PAYLOAD_SIZE (1023) bytes
+	// before filtering. AGW_path is at most ~256 chars after the path
+	// formatting; mon_frm holds the whole monitor line (path + framing
+	// + filtered payload). Sized for IL2P worst case plus framing.
+	char mon_frm[2048];
 	char AGW_path[256];
 	string * AGW_data = NULL;
 
 	const char * frm;
 	Byte * datap = data->Data;
-	Byte _data[512];
+	Byte _data[1280] = "";
 	Byte * p_data = _data;
 	int _datalen;
 
@@ -1162,14 +1166,18 @@ void AGW_frame_monitor(Byte snd_ch, Byte * path, string * data, Byte pid, Byte n
 	//		data = parse_ARP(data);
 		//
 
+	// Bound the filter against the destination buffer; IL2P payloads
+	// can exceed _data size and would otherwise stack-smash before
+	// reaching the snprintf. Reserve one byte for the NUL terminator.
 	if (len > 0)
 	{
-		for (i = 0; i < len; i++)
+		for (i = 0; i < len && (p_data - _data) < (int)sizeof(_data) - 1; i++)
 		{
 			if (datap[i] > 31 || datap[i] == 13 || datap[i] == 9)
 				*(p_data++) = datap[i];
 		}
 	}
+	*p_data = 0;
 
 	_datalen = p_data - _data;
 
@@ -1178,17 +1186,18 @@ void AGW_frame_monitor(Byte snd_ch, Byte * path, string * data, Byte pid, Byte n
 		Byte * ptr = _data;
 		i = 0;
 
-		// remove successive cr or cr on end		while (i < _datalen)
+		// remove successive cr or cr on end. Guard the i+1 read; the
+		// upstream version walked past the array on the last byte.
 
 		while (i < _datalen)
 		{
-			if ((_data[i] == 13) && (_data[i + 1] == 13))
+			if (i + 1 < _datalen && _data[i] == 13 && _data[i + 1] == 13)
 				i++;
 			else
 				*(ptr++) = _data[i++];
 		}
 
-		if (*(ptr - 1) == 13)
+		if (ptr > _data && *(ptr - 1) == 13)
 			ptr--;
 
 		*ptr = 0;
@@ -1291,9 +1300,9 @@ void AGW_frame_monitor(Byte snd_ch, Byte * path, string * data, Byte pid, Byte n
 	}
 	
 	if (Digi[0])
-		sprintf(AGW_path, " %d:Fm %s To %s Via %s <%s", snd_ch + 1, CallFrom, CallTo, Digi, frm);
+		snprintf(AGW_path, sizeof(AGW_path), " %d:Fm %s To %s Via %s <%s", snd_ch + 1, CallFrom, CallTo, Digi, frm);
 	else
-		sprintf(AGW_path, " %d:Fm %s To %s <%s", snd_ch + 1, CallFrom, CallTo, frm);
+		snprintf(AGW_path, sizeof(AGW_path), " %d:Fm %s To %s <%s", snd_ch + 1, CallFrom, CallTo, frm);
 	
 
 	switch (f_type)
@@ -1301,7 +1310,7 @@ void AGW_frame_monitor(Byte snd_ch, Byte * path, string * data, Byte pid, Byte n
 	case I_FRM:
 
 		//mon_frm = AGW_path + ctrl + ' R' + inttostr(nr) + ' S' + inttostr(ns) + ' pid=' + dec2hex(pid) + ' Len=' + inttostr(len) + ' >' + time_now + #13 + _data + #13#13;
-		sprintf(mon_frm, "%s%s R%d S%d pid=%X Len=%d >[%s]\r%s\r", AGW_path, ctrl, nr, ns, pid, len, ShortDateTime(), _data);
+		snprintf(mon_frm, sizeof(mon_frm), "%s%s R%d S%d pid=%X Len=%d >[%s]\r%s\r", AGW_path, ctrl, nr, ns, pid, len, ShortDateTime(), _data);
 
 		break;
 
@@ -1309,21 +1318,21 @@ void AGW_frame_monitor(Byte snd_ch, Byte * path, string * data, Byte pid, Byte n
 
 		if (f_id == U_UI)
 		{
-			sprintf(mon_frm, "%s pid=%X Len=%d >[%s]\r%s\r", AGW_path, pid, len, ShortDateTime(), _data); // "= AGW_path + ctrl + '>' + time_now + #13;
+			snprintf(mon_frm, sizeof(mon_frm), "%s pid=%X Len=%d >[%s]\r%s\r", AGW_path, pid, len, ShortDateTime(), _data);
 		}
 		else if (f_id == U_FRMR)
 		{
-			sprintf(mon_frm, "%s%s>%02x %02x %02x[%s]\r", AGW_path, ctrl, datap[0], datap[1], datap[2], ShortDateTime()); // "= AGW_path + ctrl + '>' + time_now + #13;
+			snprintf(mon_frm, sizeof(mon_frm), "%s%s>%02x %02x %02x[%s]\r", AGW_path, ctrl, datap[0], datap[1], datap[2], ShortDateTime());
 		}
 		else
-			sprintf(mon_frm, "%s%s>[%s]\r", AGW_path, ctrl, ShortDateTime()); // "= AGW_path + ctrl + '>' + time_now + #13;
+			snprintf(mon_frm, sizeof(mon_frm), "%s%s>[%s]\r", AGW_path, ctrl, ShortDateTime());
 
 		break;
 
 	case S_FRM:
 
 		//		mon_frm = AGW_path + ctrl + ' R' + inttostr(nr) + ' >' + time_now + #13;
-		sprintf(mon_frm, "%s%s R%d>[%s]\r", AGW_path, ctrl, nr, ShortDateTime()); // "= AGW_path + ctrl + '>' + time_now + #13;
+		snprintf(mon_frm, sizeof(mon_frm), "%s%s R%d>[%s]\r", AGW_path, ctrl, nr, ShortDateTime());
 
 		break;
 
