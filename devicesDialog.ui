@@ -556,19 +556,6 @@
        <string>to</string>
       </property>
      </widget>
-     <widget class="QCheckBox" name="darkTheme">
-      <property name="geometry">
-       <rect>
-        <x>260</x>
-        <y>304</y>
-        <width>161</width>
-        <height>17</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Dark Theme</string>
-      </property>
-     </widget>
      <widget class="QCheckBox" name="onlyMixSnoop">
       <property name="geometry">
        <rect>
