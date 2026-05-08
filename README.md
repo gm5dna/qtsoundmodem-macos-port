@@ -18,16 +18,18 @@ only and does not accept pull requests, so this is a downstream fork.
 
 macOS 26.4.1 (Tahoe), Apple Silicon, Qt 6.11 from Homebrew.
 
-AX.25 1200 baud AFSK has been exercised through BlackHole loopback and
-the `--decode-wav` harness against a small reference corpus (WA8LMF
-track 2, a G3RUH 9600 capture, an IL2P 300 baud capture). Real-RF
-testing is limited to my own station.
+AX.25 1200 baud AFSK and BPSK 300 IL2P (+CRC) have both been exercised
+extensively through BlackHole loopback and the `--decode-wav` harness
+against a small reference corpus (WA8LMF track 2, a G3RUH 9600 capture,
+an IL2P 300 baud capture). Real-RF testing is limited to my own station.
 
 ## What appears to work
 
 - AX.25 1200 baud AFSK — the path I care about most and have tested hardest.
-- ARDOP, IL2P, RSID — preserved verbatim from upstream, compiled and
-  linked but not seriously exercised on macOS.
+- BPSK 300 IL2P (with and without the CRC variant) — also exercised
+  extensively against the reference corpus.
+- ARDOP, RSID, and other upstream modes — preserved verbatim, compiled
+  and linked but not seriously exercised on macOS.
 - Qt 6 Multimedia audio backend (`SoundMode = 5`) — the only audio path
   on macOS. ALSA / Pulse / OSS / Waveout are not built.
 - CM108-style PTT via `libhidapi`; serial PTT (RTS/DTR) via a small
