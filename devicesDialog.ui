@@ -953,6 +953,9 @@
         <height>20</height>
        </rect>
       </property>
+      <property name="toolTip">
+       <string>Literal text (e.g. TX1; for Yaesu CAT) or hex pairs (e.g. 5458313B; spaces between hex digits are allowed). Auto-detected: hex iff every non-whitespace character is a hex digit and the digit count is even; otherwise treated as literal ASCII. Leave blank to send nothing.</string>
+      </property>
      </widget>
      <widget class="QLineEdit" name="PTTOff">
       <property name="geometry">
@@ -962,6 +965,9 @@
         <width>247</width>
         <height>20</height>
        </rect>
+      </property>
+      <property name="toolTip">
+       <string>Literal text (e.g. TX0; for Yaesu CAT) or hex pairs (e.g. 5458303B; spaces between hex digits are allowed). Auto-detected: hex iff every non-whitespace character is a hex digit and the digit count is even; otherwise treated as literal ASCII. Leave blank to send nothing.</string>
       </property>
      </widget>
      <widget class="QLabel" name="PTTOffLab">
