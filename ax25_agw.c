@@ -267,25 +267,25 @@ string * AGW_X_Frame(char * CallFrom,  UCHAR reg_call)
 
 string * AGW_G_Frame()
 {
-	char Ports[256] = "0;";
+	// Advertise 4 ports unconditionally, with Port number == channel index + 1.
+	// This matches the wire-byte convention used by AGW_frame_analiz (raw
+	// channel index 0..3) and by the RX path (agw_port = snd_ch). Disabled
+	// channels are listed explicitly so clients see a stable port-to-channel
+	// mapping regardless of which channels are enabled.
+
+	char Ports[256] = "4;";
 	char portMsg[64];
 
 	string * Msg;
-	
+
 	for (int i = 0; i < 4; i++)
 	{
 		if (soundChannel[i])
-		{
-			Ports[0]++;
-			sprintf(portMsg, "Port%c with SoundCard Ch %c;", Ports[0], 'A' + i);
-			strcat(Ports, portMsg);
-		}
-//		else
-//			sprintf(portMsg, "Port%c Disabled;", Ports[0]);
-
-;
+			sprintf(portMsg, "Port%d with SoundCard Ch %c;", i + 1, 'A' + i);
+		else
+			sprintf(portMsg, "Port%d Disabled;", i + 1);
+		strcat(Ports, portMsg);
 	}
-
 
 	Msg = AGW_frame_header(0, 'G', 0, "", "", strlen(Ports) + 1);
 
@@ -1487,23 +1487,9 @@ void AGW_frame_analiz(AGWUser *  AGW)
 	if (Frame->Port < 0 || Frame->Port > 3)
 		return;
 
-	// Port Number is relative to defined ports so if we only use Modems A D port 1 will be Modem D (3)
-
-	int realportlist[4] = {-1, -1, -1, -1};
-	int n = 0;
-
-	for (int i = 0; i < 4; i++)
-	{
-		if (soundChannel[i])
-		{
-			realportlist[n++] = i;
-		}
-	}
-
-	if (realportlist[Frame->Port] == -1)
-		return;
-
-	Frame->Port = realportlist[Frame->Port];
+	// AGW port byte is the modem channel index (0..3), matching the convention
+	// used on the RX side (agw_port = snd_ch in AGW_frame_monitor). Drop frames
+	// addressed to a channel whose modem isn't enabled.
 
 	if (soundChannel[Frame->Port] == 0)
 		return;
