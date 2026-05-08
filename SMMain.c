@@ -1122,6 +1122,87 @@ char * strlop(char * buf, char delim)
 	return ptr;
 }
 
+// Decode the user's PTT On/Off configuration string into the raw bytes
+// the radio actually receives. Auto-detects the input format:
+//
+//   - Hex pairs: every non-whitespace character is a hex digit and the
+//     digit count is even and non-zero. Whitespace between digits is
+//     allowed (so "5458313B" and "54 58 31 3B" both decode to TX1;).
+//   - ASCII literal: anything else, copied byte-for-byte (so "TX1;"
+//     decodes to TX1;).
+//
+// The chosen interpretation and resulting byte count are logged via
+// Debugprintf so the user can confirm what is being sent. The output
+// is capped at maxOut bytes; longer input is truncated with a warning.
+//
+// Replaces the upstream UZ7HO parser in OpenPTTPort, which was hex-only
+// and gave no diagnostic when the user typed ASCII — "TX1;" silently
+// parsed to garbage 0xF1 0x1B because the loop produced nonsense for
+// any non-hex char. Backwards-compatible: existing hex-encoded configs
+// still parse identically.
+static int decodePTTCommandString(const char *label,
+                                  const char *in,
+                                  UCHAR *out,
+                                  int maxOut)
+{
+	int inlen = (int)strlen(in);
+	int i, hexCount = 0, nonSpaceNonHex = 0;
+
+	if (inlen == 0)
+	{
+		Debugprintf("PTT: %s empty, no command will be sent", label);
+		return 0;
+	}
+
+	for (i = 0; i < inlen; i++)
+	{
+		char c = in[i];
+		if ((c >= '0' && c <= '9')
+		 || (c >= 'A' && c <= 'F')
+		 || (c >= 'a' && c <= 'f'))
+			hexCount++;
+		else if (c != ' ' && c != '\t')
+			nonSpaceNonHex++;
+	}
+
+	if (nonSpaceNonHex == 0 && hexCount > 0 && (hexCount % 2) == 0)
+	{
+		int outlen = 0;
+		int havehi = 0;
+		UCHAR hi = 0;
+		int totalBytes = hexCount / 2;
+		for (i = 0; i < inlen && outlen < maxOut; i++)
+		{
+			char c = in[i];
+			int v;
+			if (c >= '0' && c <= '9') v = c - '0';
+			else if (c >= 'A' && c <= 'F') v = c - 'A' + 10;
+			else if (c >= 'a' && c <= 'f') v = c - 'a' + 10;
+			else continue;
+			if (!havehi) { hi = (UCHAR)v; havehi = 1; }
+			else { out[outlen++] = (UCHAR)((hi << 4) | v); havehi = 0; }
+		}
+		if (totalBytes > maxOut)
+			Debugprintf("PTT: %s='%s' interpreted as hex (truncated %d->%d bytes)",
+				label, in, totalBytes, outlen);
+		else
+			Debugprintf("PTT: %s='%s' interpreted as hex, %d bytes", label, in, outlen);
+		return outlen;
+	}
+
+	{
+		int outlen = (inlen > maxOut) ? maxOut : inlen;
+		memcpy(out, in, (size_t)outlen);
+		if (inlen > maxOut)
+			Debugprintf("PTT: %s='%s' interpreted as ASCII (truncated %d->%d bytes)",
+				label, in, inlen, outlen);
+		else
+			Debugprintf("PTT: %s='%s' interpreted as ASCII, %d bytes",
+				label, in, outlen);
+		return outlen;
+	}
+}
+
 void OpenPTTPort()
 {
 	PTTMode &= ~PTTCM108;
@@ -1129,43 +1210,12 @@ void OpenPTTPort()
 
 	if (PTTPort[0] && strcmp(PTTPort, "None") != 0)
 	{
-		if (PTTMode == PTTCAT)
+		if ((PTTMode & PTTCAT))
 		{
-			// convert config strings from Hex
-
-			char * ptr1 = PTTOffString;
-			UCHAR * ptr2 = PTTOffCmd;
-			char c;
-			int val;
-
-			while (c = *(ptr1++))
-			{
-				val = c - 0x30;
-				if (val > 15) val -= 7;
-				val <<= 4;
-				c = *(ptr1++) - 0x30;
-				if (c > 15) c -= 7;
-				val |= c;
-				*(ptr2++) = val;
-			}
-
-			PTTOffCmdLen = ptr2 - PTTOffCmd;
-
-			ptr1 = PTTOnString;
-			ptr2 = PTTOnCmd;
-
-			while (c = *(ptr1++))
-			{
-				val = c - 0x30;
-				if (val > 15) val -= 7;
-				val <<= 4;
-				c = *(ptr1++) - 0x30;
-				if (c > 15) c -= 7;
-				val |= c;
-				*(ptr2++) = val;
-			}
-
-			PTTOnCmdLen = ptr2 - PTTOnCmd;
+			PTTOffCmdLen = (UCHAR)decodePTTCommandString(
+				"PTTOffString", PTTOffString, PTTOffCmd, sizeof(PTTOffCmd));
+			PTTOnCmdLen = (UCHAR)decodePTTCommandString(
+				"PTTOnString", PTTOnString, PTTOnCmd, sizeof(PTTOnCmd));
 		}
 
 		if (stricmp(PTTPort, "GPIO") == 0)
