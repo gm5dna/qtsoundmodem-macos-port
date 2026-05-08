@@ -177,7 +177,10 @@ bool inWaterfall = false;
 
 int MgmtPort = 0;
 int RHPPort = 9000;
-bool RHPServ = 0; 
+bool RHPServ = 0;
+
+int txAudioLevel = 100;
+int rxAudioLevel = 100;
 
 extern "C" int NeedWaterfallHeaders;
 extern "C" float BinSize;
@@ -485,22 +488,22 @@ void QtSoundModem::resizeEvent(QResizeEvent* event)
 	if (waterfallsHeight)
 		ui.Waterfall->setGeometry(QRect(0, waterfallsTop, Width, waterfallsHeight + 2));
 
-	// Anchor top-row right cluster (RX Offset, DCD Level, Rcv Level meter) to the
-	// right edge so it doesn't leave a wide empty band when fullscreen widens
-	// the window beyond the original 993-pixel UI design width. Clamp at zero:
-	// a negative delta would slide the cluster LEFT onto modeA/modeC, and the
-	// RXOffset/DCDSlider QSliders would intercept clicks meant for the
-	// dropdowns. minimumSize=993 normally prevents Width<993, but
-	// restoreGeometry() with an older saved size and transient resize events
-	// during show can both momentarily violate it.
-	int rightDelta = Width > 993 ? Width - 993 : 0;
+	// Anchor top-row right cluster to the right edge so it doesn't leave a
+	// wide empty band when fullscreen widens the window beyond the design
+	// width. Order left → right: RX Offset, DCD Level, TX Audio, RX Audio,
+	// Rcv Level (meter at the far right). Design base 1200 — clamp at zero.
+	int rightDelta = Width > 1200 ? Width - 1200 : 0;
 	ui.RXOffsetLabel->setGeometry(600 + rightDelta, 2, 87, 13);
 	ui.RXOffset->setGeometry(600 + rightDelta, 18, 63, 14);
 	ui.label->setGeometry(690 + rightDelta, 2, 73, 13);
 	ui.DCDSlider->setGeometry(690 + rightDelta, 18, 73, 14);
-	ui.label_7->setGeometry(780 + rightDelta, 0, 91, 13);
-	ui.RXLevel->setGeometry(780 + rightDelta, 14, 150, 11);
-	ui.RXLevel2->setGeometry(780 + rightDelta, 23, 150, 11);
+	ui.TXAudioLabel->setGeometry(780 + rightDelta, 2, 100, 13);
+	ui.TXAudio->setGeometry(780 + rightDelta, 18, 90, 14);
+	ui.RXAudioLabel->setGeometry(890 + rightDelta, 2, 100, 13);
+	ui.RXAudio->setGeometry(890 + rightDelta, 18, 90, 14);
+	ui.label_7->setGeometry(1000 + rightDelta, 0, 91, 13);
+	ui.RXLevel->setGeometry(1000 + rightDelta, 14, 150, 11);
+	ui.RXLevel2->setGeometry(1000 + rightDelta, 23, 150, 11);
 }
 
 QAction * setupMenuLine(QMenu * Menu, char * Label, QObject * parent, int State)
@@ -707,6 +710,14 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 
 	restoreGeometry(mysettings.value("geometry").toByteArray());
 	restoreState(mysettings.value("windowState").toByteArray());
+
+	// restoreGeometry can leave the window narrower than the new design
+	// minimum (e.g. when an .ini saved by an earlier build with a smaller
+	// minimumSize is loaded). Force-grow so the right-cluster anchoring
+	// in resizeEvent has room for RX Offset / DCD / Rcv Level / TX Audio /
+	// RX Audio without colliding.
+	if (width() < 1200)
+		resize(1200, height());
 
 	constellationDialog->restoreGeometry(mysettings.value("constellationgeometry").toByteArray());
 
@@ -920,6 +931,17 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 
 	connect(ui.DCDSlider, SIGNAL(sliderMoved(int)), this, SLOT(clickedSlotI(int)));
 	connect(ui.RXOffset, SIGNAL(valueChanged(int)), this, SLOT(clickedSlotI(int)));
+
+	sprintf(valChar, "TX Audio %d%%", txAudioLevel);
+	ui.TXAudioLabel->setText(valChar);
+	ui.TXAudio->setValue(txAudioLevel);
+
+	sprintf(valChar, "RX Audio %d%%", rxAudioLevel);
+	ui.RXAudioLabel->setText(valChar);
+	ui.RXAudio->setValue(rxAudioLevel);
+
+	connect(ui.TXAudio, SIGNAL(valueChanged(int)), this, SLOT(clickedSlotI(int)));
+	connect(ui.RXAudio, SIGNAL(valueChanged(int)), this, SLOT(clickedSlotI(int)));
 
 	QObject::connect(t, SIGNAL(sendtoTrace(char *, int)), this, SLOT(sendtoTrace(char *, int)), Qt::QueuedConnection);
 	QObject::connect(t, SIGNAL(updateDCD(int, int)), this, SLOT(doupdateDCD(int, int)), Qt::QueuedConnection);
@@ -1368,6 +1390,26 @@ void QtSoundModem::clickedSlotI(int i)
 		pnt_change[2] = 1;
 		pnt_change[3] = 1;
 
+		saveSettings();
+		return;
+	}
+
+	if (strcmp(Name, "TXAudio") == 0)
+	{
+		char valChar[32];
+		txAudioLevel = i;
+		sprintf(valChar, "TX Audio %d%%", txAudioLevel);
+		ui.TXAudioLabel->setText(valChar);
+		saveSettings();
+		return;
+	}
+
+	if (strcmp(Name, "RXAudio") == 0)
+	{
+		char valChar[32];
+		rxAudioLevel = i;
+		sprintf(valChar, "RX Audio %d%%", rxAudioLevel);
+		ui.RXAudioLabel->setText(valChar);
 		saveSettings();
 		return;
 	}
@@ -4949,6 +4991,24 @@ void QtSoundModem::StartWatchdog()
 		 Debugprintf("Space %d", frames);
 	 }
 
+	 // Software TX attenuation. Plain int snapshot — see UZ7HOStuff.h
+	 // comment on txAudioLevel/rxAudioLevel for the threading argument.
+	 // Scale in place on the caller's DMABuffer; producers in SMMain.c
+	 // / MacBits.c reset or advance after SendtoCard rather than re-reading
+	 // the sent buffer (verified during plan review). Since txLvl ≤ 100,
+	 // |sample * txLvl / 100| ≤ |sample| ≤ 32767 — no saturation needed.
+	 const int txLvl = txAudioLevel;
+	 if (txLvl != 100)
+	 {
+		 short * s = (short *)buf;
+		 const int total = n * 2;       // n stereo frames = 2*n int16 samples
+		 for (int k = 0; k < total; k++)
+		 {
+			 const int v = (int)s[k] * txLvl;
+			 s[k] = (short)((v + (v >= 0 ? 50 : -50)) / 100);
+		 }
+	 }
+
 	 int x;
 	 {
 		 QMutexLocker locker(&s_audioMutex);
@@ -5282,6 +5342,22 @@ extern "C" void PollQSound()
 			x *= 2;
 		}
 		BufferLen += (int)x;
+
+		// Software RX attenuation. Applied here, before any path branches,
+		// so both the FIR-decimated 12 kHz path and the native-rate RUH/dw9600
+		// path (which bypasses decimateAudioToModem) see the same gain.
+		// Sign-aware rounding minimises low-bit truncation at low levels.
+		const int rxLvl = rxAudioLevel;
+		if (rxLvl != 100)
+		{
+			short * s = (short *)&Buffer[BufferLen - x];
+			const int samples = (int)(x / sizeof(short));
+			for (int k = 0; k < samples; k++)
+			{
+				const int v = (int)s[k] * rxLvl;
+				s[k] = (short)((v + (v >= 0 ? 50 : -50)) / 100);
+			}
+		}
 	}
 
 	// Earlier code had an early-return when bytesAvailable() exceeded

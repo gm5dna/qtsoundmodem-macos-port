@@ -1018,6 +1018,14 @@ extern BOOL Secondwaterfall;
 extern int dcd_threshold;
 extern int rxOffset;
 extern int chanOffset[4];
+
+// 0..100, 100 = unity passthrough. Written by Qt GUI thread (slider signal),
+// read by audio threads (sendSamplestoQSound, PollQSound). Plain int matches
+// the existing dcd_threshold/rxOffset pattern; aligned 32-bit r/w is atomic
+// on arm64/x86_64 and each audio call snapshots into a local, so a torn read
+// during a slider drag would at worst mis-scale a single ~21 ms buffer.
+extern int txAudioLevel;
+extern int rxAudioLevel;
 extern int Continuation[4];	// Sending 2nd or more packet of burst
 
 extern boolean busy;

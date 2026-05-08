@@ -312,6 +312,11 @@ void getSettings()
 	dcd_threshold = settings->value("Modem/DCDThreshold", 40).toInt();
 	rxOffset = settings->value("Modem/rxOffset", 0).toInt();
 
+	txAudioLevel = settings->value("Modem/TXAudioLevel", 100).toInt();
+	rxAudioLevel = settings->value("Modem/RXAudioLevel", 100).toInt();
+	if (txAudioLevel < 0 || txAudioLevel > 100) txAudioLevel = 100;
+	if (rxAudioLevel < 0 || rxAudioLevel > 100) rxAudioLevel = 100;
+
 	AGWServ = settings->value("AGWHost/Server", TRUE).toBool();
 	AGWPort = settings->value("AGWHost/Port", 8000).toInt();
 	KISSServ = settings->value("KISS/Server", FALSE).toBool();
@@ -569,6 +574,9 @@ void saveSettings()
 
 	settings->setValue("Modem/DCDThreshold", dcd_threshold);
 	settings->setValue("Modem/rxOffset", rxOffset);
+
+	settings->setValue("Modem/TXAudioLevel", txAudioLevel);
+	settings->setValue("Modem/RXAudioLevel", rxAudioLevel);
 
 	settings->setValue("AGWHost/Server", AGWServ);
 	settings->setValue("AGWHost/Port", AGWPort);
