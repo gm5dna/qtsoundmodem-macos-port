@@ -36,7 +36,22 @@ an IL2P 300 baud capture). Real-RF testing is limited to my own station.
   termios shim; CAT PTT via the on-screen string fields.
 - Hot-replug of audio devices.
 
-## Build
+## Install (Homebrew)
+
+The easiest route, and probably the preferred one, is the formula in
+my [amateur-radio tap](https://github.com/gm5dna/homebrew-amateur-radio):
+
+```sh
+brew install gm5dna/amateur-radio/qtsoundmodem
+```
+
+The formula tracks `macos-port`, pulls in `qt`, `fftw`, `hidapi`, and
+`cmake` automatically, builds the bundle, and installs the `.app` into
+the Homebrew prefix. Microphone permission is requested via
+`NSMicrophoneUsageDescription` on first launch; if denied, the modem
+silently reads zero samples.
+
+## Build from source
 
 ```sh
 brew install qt fftw hidapi cmake
@@ -51,9 +66,7 @@ open build/QtSoundModem.app
 The build runs `macdeployqt`, embeds `libhidapi` with `install_name_tool`,
 and ad-hoc `codesign --deep`s the bundle so it is self-contained and
 launchable. It is **not** Developer-ID signed and **not** notarised —
-Gatekeeper needs a right-click → Open on first launch. Microphone
-permission is requested via `NSMicrophoneUsageDescription`; if denied,
-the modem silently reads zero samples.
+Gatekeeper needs a right-click → Open on first launch.
 
 ## Runtime files
 
