@@ -2,47 +2,37 @@
 
 An unofficial, AI-assisted macOS port of [g8bpq/QtSoundModem](https://github.com/g8bpq/QtSoundModem).
 
-A fair warning up front: this is mostly a personal project. I'm a radio
-amateur (gm5dna) who wanted QtSoundModem on Apple Silicon, and most of
-the porting work — the Qt 6 audio backend, the libhidapi PTT shim, the
-macOS plumbing in `MacBits.c` / `MacPermissions.mm` — was done with
-heavy assistance from Claude.
+A personal project: I'm a radio amateur (gm5dna) who wanted QtSoundModem
+on Apple Silicon. The Qt 6 audio backend, the libhidapi PTT shim, and
+the macOS plumbing in `MacBits.c` / `MacPermissions.mm` were written
+with heavy assistance from Claude. Upstream ships Linux/Windows binaries
+only and does not accept pull requests, so this is a downstream fork.
 
-Upstream ships Linux and Windows binaries only and has stated they
-don't accept pull requests, so this is a downstream fork rather than a
-contribution path.
-
-## Branch model
+## Branches
 
 - `master` mirrors upstream verbatim.
-- `macos-port` is the patched series. Build from this branch.
-- Other named branches may carry small UX enhancements on top of
-  `macos-port`; the port itself stays as close to upstream as possible.
+- `macos-port` is the patched series — build from this branch.
+- Other named branches carry small UX enhancements on top.
 
 ## Tested on
 
-- macOS 26.4.1 (Tahoe), Apple Silicon (M-series).
-- Qt 6.11 from Homebrew.
+macOS 26.4.1 (Tahoe), Apple Silicon, Qt 6.11 from Homebrew.
 
-Layer-2 AX.25 1200 baud AFSK decoding has been exercised through
-BlackHole loopback and the `--decode-wav` harness against a small
-reference corpus (WA8LMF track 2, a G3RUH 9600 capture, and an IL2P
-300 baud capture). Real-RF testing is ongoing and limited to my own
-station — I can't claim broad compatibility.
+AX.25 1200 baud AFSK has been exercised through BlackHole loopback and
+the `--decode-wav` harness against a small reference corpus (WA8LMF
+track 2, a G3RUH 9600 capture, an IL2P 300 baud capture). Real-RF
+testing is limited to my own station.
 
 ## What appears to work
 
-- AX.25 1200 baud AFSK — the path I care about most and have tested
-  hardest.
-- ARDOP, IL2P, RSID — code paths preserved verbatim from upstream.
-  Compiled and linked, but I haven't seriously exercised them on
-  macOS; they may or may not behave.
-- Qt 6 Multimedia audio backend (`SoundMode = 5`) — the only audio
-  path on macOS. ALSA / Pulse / OSS / Waveout backends are not built.
-- CM108-style PTT via `libhidapi`.
-- Serial PTT (RTS/DTR) via a small POSIX termios shim.
-- Hot-replug of audio devices (re-binds when a device with the same
-  name reappears).
+- AX.25 1200 baud AFSK — the path I care about most and have tested hardest.
+- ARDOP, IL2P, RSID — preserved verbatim from upstream, compiled and
+  linked but not seriously exercised on macOS.
+- Qt 6 Multimedia audio backend (`SoundMode = 5`) — the only audio path
+  on macOS. ALSA / Pulse / OSS / Waveout are not built.
+- CM108-style PTT via `libhidapi`; serial PTT (RTS/DTR) via a small
+  termios shim; CAT PTT via the on-screen string fields.
+- Hot-replug of audio devices.
 
 ## Build
 
@@ -56,64 +46,66 @@ cmake --build build
 open build/QtSoundModem.app
 ```
 
-The build runs `macdeployqt`, uses `install_name_tool` to embed
-`libhidapi`, and finishes with an ad-hoc `codesign --deep` so the
-bundle is self-contained and launchable. The bundle is **not**
-Developer-ID signed and **not** notarised — this is for local use.
-Gatekeeper will need a right-click → Open on first launch.
+The build runs `macdeployqt`, embeds `libhidapi` with `install_name_tool`,
+and ad-hoc `codesign --deep`s the bundle so it is self-contained and
+launchable. It is **not** Developer-ID signed and **not** notarised —
+Gatekeeper needs a right-click → Open on first launch. Microphone
+permission is requested via `NSMicrophoneUsageDescription`; if denied,
+the modem silently reads zero samples.
 
-Microphone permission is requested via `NSMicrophoneUsageDescription`
-in the bundle's `Info.plist`. If you deny it, the modem will silently
-read zero samples and look like it isn't working.
+## Runtime files
 
-## Where things live at runtime
-
-- Config: `~/Library/Application Support/gm5dna/QtSoundModem/QtSoundModem.ini`
-- Logs / tracelog: same directory.
-- The app `chdir`s into that directory at launch so the upstream
+- Config + tracelog: `~/Library/Application Support/gm5dna/QtSoundModem/`
+- The app `chdir`s into that directory at launch so upstream's
   relative-path settings calls land in the right place.
+
+## Notable fixes on this fork
+
+Most macos-port commits are platform glue, but two recent commits fix
+genuine upstream bugs that affect every platform:
+
+- **PTT On/Off String now auto-detects ASCII vs hex** (commit
+  [`99716e3`](https://github.com/gm5dna/QtSoundModem/commit/99716e3)).
+  Upstream parses these fields as hex digit pairs only, so typing the
+  obvious Yaesu CAT command `TX1;` silently produced `0xF1 0x1B` with
+  no terminator. Fields now accept literal ASCII (`TX1;`) or hex
+  (`5458313B`, `FE FE 48 E0 1C 00 01 FD`) and log the chosen
+  interpretation. Backwards-compatible.
+- **Buffer overflow in AGW/frame monitor on long IL2P frames** (commit
+  [`45ddc4e`](https://github.com/gm5dna/QtSoundModem/commit/45ddc4e)).
+  `AGW_frame_monitor` and `frame_monitor` declared 512-byte buffers
+  while IL2P payloads carry up to 1023 bytes, producing a FORTIFY
+  abort on the IL2P TX path. Buffers resized, all `sprintf`s converted
+  to bounded `snprintf`.
 
 ## Known limitations
 
-- **Audio devices that don't offer a clean modem-compatible format
-  are now refused** with a dialog rather than silently producing
-  garbled audio. The modem requires Int16 PCM at 12, 24, 48 or
-  96 kHz on input (with a 12 kHz strict requirement on output, since
-  there's no TX resampler yet); a Float-format device, or one that
-  only offers 44.1 / 88.2 kHz, gets a clear "pick another device or
-  change the rate in Audio MIDI Setup" message instead of opening
-  with a 22% timing error or reinterpreting Float bytes as Int16.
-  No polyphase resampler — out of scope for the port.
-
-- **No "Setup Font" menu item.** Qt 6.11's `QFontDialog` crashes
-  inside QtWidgets on macOS 26 (null deref in font-family
-  enumeration), so the menu entry has been removed. The app
-  defaults to the macOS system UI font when `QtSoundModem.ini` has
-  no saved `FontFamily`. To change the font manually, edit
-  `FontFamily` / `PointSize` / `Weight` in the .ini directly. I'll
-  revisit if upstream Qt fixes the dialog.
-
-- **Anything I haven't listed under "What appears to work"** should
-  be assumed untested on macOS until proven otherwise.
+- **Audio devices that don't offer a clean modem-compatible format are
+  refused with a dialog** rather than silently producing garbled audio.
+  Input must be Int16 PCM at 12 / 24 / 48 / 96 kHz; output must be
+  Int16 at 12 kHz (no TX resampler yet). Float-format devices and
+  44.1 / 88.2 kHz are rejected. No polyphase resampler — out of scope.
+- **No "Setup Font" menu item.** Qt 6.11's `QFontDialog` crashes inside
+  QtWidgets on macOS 26 (null deref in font-family enumeration). The
+  app defaults to the macOS system UI font; edit `FontFamily` /
+  `PointSize` / `Weight` in `QtSoundModem.ini` to override.
+- Anything not listed under "What appears to work" should be assumed
+  untested on macOS.
 
 ## Origin
 
-Forked at upstream commit `9cd2735` (0.0.0.76). The macOS-specific
-work is a small patch series on top of that point: the first commit
-on `macos-port` strips Windows-only artefacts, and the rest add the
-Qt audio backend, libhidapi PTT, and the `MacBits.c` /
-`MacPermissions.mm` shims. Follow-up commits are single-purpose
-fixes.
+Forked at upstream `9cd2735` (0.0.0.76). The macOS-specific work is a
+small patch series on top: the first commit strips Windows-only
+artefacts, the rest add the Qt audio backend, libhidapi PTT, and the
+`MacBits.c` / `MacPermissions.mm` shims. Follow-up commits are
+single-purpose fixes.
 
 ## Issues
 
-This is a personal maintenance fork with no support guarantee. If
-something is broken on the macOS side, an issue on the
-[tracker](https://github.com/gm5dna/QtSoundModem/issues) is welcome
-and I'll look when I can — but I may not have time, and I may not
-know the answer. Bugs that exist in upstream too should go to g8bpq
-directly.
+Personal maintenance fork, no support guarantee. macOS-side bugs are
+welcome on the [tracker](https://github.com/gm5dna/QtSoundModem/issues);
+upstream bugs should go to g8bpq directly.
 
 ## Licence
 
-GPLv3 — same as upstream. See the per-source-file headers.
+GPLv3, same as upstream. See per-source-file headers.
