@@ -63,7 +63,6 @@ extern int CWIDLeft;
 extern int CWIDRight;
 extern int CWIDType;
 extern bool afterTraffic;
-extern bool darkTheme;
 extern "C" bool useKISSControls;
 
 extern "C" int RSID_SABM[4];
@@ -423,8 +422,6 @@ void getSettings()
 
 	}
 
-	darkTheme = settings->value("Init/darkTheme", false).toBool();
-
 	delete(settings);
 }
 
@@ -616,8 +613,6 @@ void saveSettings()
 	settings->setValue("Modem/CWIDRight", CWIDRight);
 	settings->setValue("Modem/CWIDType", CWIDType);
 	settings->setValue("Modem/afterTraffic", afterTraffic);
-
-	settings->setValue("Init/darkTheme", darkTheme);
 
 	saveAX25Params(0);
 	saveAX25Params(1);

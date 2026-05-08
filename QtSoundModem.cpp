@@ -49,6 +49,7 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 #include <QFontDatabase>
 #include <QFile>
 #include <QMutex>
+#include <QStyleHints>
 
 #include "UZ7HOStuff.h"
 
@@ -199,7 +200,10 @@ QRgb cyan = qRgb(0, 255, 255);
 QRgb txText = qRgb(192, 0, 0);
 QRgb rxText = qRgb(0, 0, 192);
 
-bool darkTheme = true;
+// Tracks the active system colour scheme; refreshed at startup and on
+// every QStyleHints::colorSchemeChanged signal. No persisted user setting
+// — the macOS Appearance pane is the single source of truth.
+bool darkTheme = false;
 bool minimizeonStart = true;
 extern "C" bool useKISSControls;
 
@@ -714,6 +718,17 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	sessionTable->setRowCount(1);
 	sessionTable->setColumnCount(12);
 	m_TableHeader << "MyCall" << "DestCall" << "Status" << "Sent pkts" << "Sent Bytes" << "Rcvd pkts" << "Rcvd bytes" << "Rcvd FC" << "FEC corr" << "CPS TX" << "CPS RX" << "Direction";
+
+	// Track the OS colour scheme. Qt 6.5+ surfaces the live system value
+	// via QStyleHints; on macOS this follows System Settings → Appearance
+	// and re-fires when the user toggles light/dark.
+	darkTheme = (qApp->styleHints()->colorScheme() == Qt::ColorScheme::Dark);
+	connect(qApp->styleHints(), &QStyleHints::colorSchemeChanged,
+		this, [this](Qt::ColorScheme scheme)
+		{
+			darkTheme = (scheme == Qt::ColorScheme::Dark);
+			mysetstyle();
+		});
 
 	mysetstyle();
 
@@ -2496,7 +2511,6 @@ void QtSoundModem::doDevices()
 	Dev->DualPTT->setChecked(DualPTT);
 
 	Dev->multiCore->setChecked(multiCore);
-	Dev->darkTheme->setChecked(darkTheme);
 
 	Dev->WaterfallMin->setCurrentIndex(Dev->WaterfallMin->findText(QString::number(WaterfallMin), Qt::MatchFixedString));
 	Dev->WaterfallMax->setCurrentIndex(Dev->WaterfallMax->findText(QString::number(WaterfallMax), Qt::MatchFixedString));
@@ -2751,8 +2765,6 @@ void QtSoundModem::deviceaccept()
 	DualPTT = Dev->DualPTT->isChecked();
 	TX_rotate = Dev->txRotation->isChecked();
 	multiCore = Dev->multiCore->isChecked();
-	darkTheme = Dev->darkTheme->isChecked();
-	mysetstyle();
 
 	if (Dev->RTS->isChecked())
 		PTTMode = PTTRTS;
