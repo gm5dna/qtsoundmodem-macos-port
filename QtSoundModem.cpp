@@ -480,6 +480,20 @@ void QtSoundModem::resizeEvent(QResizeEvent* event)
 
 	if (waterfallsHeight)
 		ui.Waterfall->setGeometry(QRect(0, waterfallsTop, Width, waterfallsHeight + 2));
+
+	// Anchor top-row right cluster (RX Offset, DCD Level, Rcv Level meter) to the
+	// right edge so it doesn't leave a wide empty band when fullscreen widens
+	// the window beyond the original 993-pixel UI design width. Window has a
+	// 993 minimumSize so this delta is normally >= 0; allow negative as a
+	// safety net to keep the cluster on-screen if anything bypasses the min.
+	int rightDelta = Width - 993;
+	ui.RXOffsetLabel->setGeometry(600 + rightDelta, 2, 87, 13);
+	ui.RXOffset->setGeometry(600 + rightDelta, 18, 63, 14);
+	ui.label->setGeometry(690 + rightDelta, 2, 73, 13);
+	ui.DCDSlider->setGeometry(690 + rightDelta, 18, 73, 14);
+	ui.label_7->setGeometry(780 + rightDelta, 0, 91, 13);
+	ui.RXLevel->setGeometry(780 + rightDelta, 14, 150, 11);
+	ui.RXLevel2->setGeometry(780 + rightDelta, 23, 150, 11);
 }
 
 QAction * setupMenuLine(QMenu * Menu, char * Label, QObject * parent, int State)

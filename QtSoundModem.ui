@@ -10,10 +10,10 @@
     <height>900</height>
    </rect>
   </property>
-  <property name="maximumSize">
+  <property name="minimumSize">
    <size>
-    <width>1024</width>
-    <height>16777215</height>
+    <width>993</width>
+    <height>300</height>
    </size>
   </property>
   <property name="windowTitle">
