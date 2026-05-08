@@ -641,6 +641,11 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	}
 	constellationDialog->show();
 
+#if !defined(Q_OS_MACOS)
+	// macOS uses the Dock for minimised windows; a QSystemTrayIcon would
+	// land in the menu bar, which is not the platform idiom. The whole
+	// minimise-to-tray feature is suppressed on macOS — see also the
+	// guarded "Minimize to Tray" menu entry below.
 	if (MintoTray)
 	{
 		char popUp[256];
@@ -648,9 +653,10 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 		trayIcon = new QSystemTrayIcon(QIcon(":/QtSoundModem/soundmodem.ico"), this);
 		trayIcon->setToolTip(popUp);
 		trayIcon->show();
-		
+
 		connect(trayIcon, SIGNAL(activated(QSystemTrayIcon::ActivationReason)), this, SLOT(TrayActivated(QSystemTrayIcon::ActivationReason)));
 	}
+#endif
 
 	using48000 = 0;			// Set if using 48K sample rate (ie RUH Modem active)
 	ReceiveSize = 512;
@@ -737,9 +743,11 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	// QtWidgets on Qt 6.11 + macOS 26.x. Font defaults to the system
 	// font (set up in startup via QFontDatabase::systemFont).
 
+#if !defined(Q_OS_MACOS)
 	actMintoTray = setupMenu->addAction("Minimize to Tray", this, SLOT(MinimizetoTray()));
 	actMintoTray->setCheckable(1);
 	actMintoTray->setChecked(MintoTray);
+#endif
 
 	viewMenu = ui.menuBar->addMenu(tr("&View"));
 
