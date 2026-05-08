@@ -483,10 +483,13 @@ void QtSoundModem::resizeEvent(QResizeEvent* event)
 
 	// Anchor top-row right cluster (RX Offset, DCD Level, Rcv Level meter) to the
 	// right edge so it doesn't leave a wide empty band when fullscreen widens
-	// the window beyond the original 993-pixel UI design width. Window has a
-	// 993 minimumSize so this delta is normally >= 0; allow negative as a
-	// safety net to keep the cluster on-screen if anything bypasses the min.
-	int rightDelta = Width - 993;
+	// the window beyond the original 993-pixel UI design width. Clamp at zero:
+	// a negative delta would slide the cluster LEFT onto modeA/modeC, and the
+	// RXOffset/DCDSlider QSliders would intercept clicks meant for the
+	// dropdowns. minimumSize=993 normally prevents Width<993, but
+	// restoreGeometry() with an older saved size and transient resize events
+	// during show can both momentarily violate it.
+	int rightDelta = Width > 993 ? Width - 993 : 0;
 	ui.RXOffsetLabel->setGeometry(600 + rightDelta, 2, 87, 13);
 	ui.RXOffset->setGeometry(600 + rightDelta, 18, 63, 14);
 	ui.label->setGeometry(690 + rightDelta, 2, 73, 13);
