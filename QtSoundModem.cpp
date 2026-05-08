@@ -315,16 +315,22 @@ void QtSoundModem::doupdateDCD(int Chan, int State)
 extern "C" char * frame_monitor(string * frame, char * code, bool tx_stat);
 extern "C" char * ShortDateTime();
 
+// Monitor-line buffer: must accommodate the worst-case frame_monitor()
+// return (now up to ~2 kB after the IL2P-overflow fix in sm_main.c) plus
+// the "%d:" channel prefix and trailing "\r". The malloc passes ownership
+// to the receiver via signal/slot, hence the heap allocation.
+#define QSM_MON_MSG_SIZE 4096
+
 extern "C" void mon_rsid(int snd_ch, char * RSID)
 {
 	int Len;
-	char * Msg = (char *)malloc(1024);		// Cant pass local variable via signal/slot
+	char * Msg = (char *)malloc(QSM_MON_MSG_SIZE);		// Cant pass local variable via signal/slot
 
-	sprintf(Msg, "%d:%s [%s%c]", snd_ch + 1, RSID, ShortDateTime(), 'R');
+	snprintf(Msg, QSM_MON_MSG_SIZE, "%d:%s [%s%c]", snd_ch + 1, RSID, ShortDateTime(), 'R');
 
 	Len = strlen(Msg);
 
-	if (Msg[Len - 1] != '\r')
+	if (Len > 0 && Msg[Len - 1] != '\r' && Len < QSM_MON_MSG_SIZE - 1)
 	{
 		Msg[Len++] = '\r';
 		Msg[Len] = 0;
@@ -338,16 +344,16 @@ extern "C" void put_frame(int snd_ch, string * frame, char * code, int  tx, int 
 	UNUSED(excluded);
 
 	int Len;
-	char * Msg = (char *)malloc(1024);		// Cant pass local variable via signal/slot
+	char * Msg = (char *)malloc(QSM_MON_MSG_SIZE);		// Cant pass local variable via signal/slot
 
 	if (strcmp(code, "NON-AX25") == 0)
-		sprintf(Msg, "%d: <NON-AX25 frame Len = %d [%s%c]\r", snd_ch, frame->Length, ShortDateTime(), 'R');
+		snprintf(Msg, QSM_MON_MSG_SIZE, "%d: <NON-AX25 frame Len = %d [%s%c]\r", snd_ch, frame->Length, ShortDateTime(), 'R');
 	else
-		sprintf(Msg, "%d:%s", snd_ch + 1, frame_monitor(frame, code, tx));
+		snprintf(Msg, QSM_MON_MSG_SIZE, "%d:%s", snd_ch + 1, frame_monitor(frame, code, tx));
 
 	Len = strlen(Msg);
 
-	if (Msg[Len - 1] != '\r')
+	if (Len > 0 && Msg[Len - 1] != '\r' && Len < QSM_MON_MSG_SIZE - 1)
 	{
 		Msg[Len++] = '\r';
 		Msg[Len] = 0;
