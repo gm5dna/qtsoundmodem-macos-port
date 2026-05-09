@@ -167,6 +167,7 @@ if(APPLE)
     list(APPEND QSM_PLATFORM_SOURCES
         MacBits.c
         MacPermissions.mm
+        MacAudioRate.mm
     )
 endif()
 if(UNIX AND NOT APPLE)
@@ -280,14 +281,20 @@ if(APPLE)
 
     # AVFoundation is needed by MacPermissions.mm (microphone-permission
     # probe). CoreFoundation is pulled in transitively but list it for
-    # documentation. AppKit/IOKit/Metal already arrive via Qt.
+    # documentation. CoreAudio + Foundation are needed by MacAudioRate.mm
+    # for kAudioDevicePropertyNominalSampleRate and dispatch_*. AppKit /
+    # IOKit / Metal already arrive via Qt.
     find_library(AVFOUNDATION_FRAMEWORK AVFoundation REQUIRED)
     find_library(COREMEDIA_FRAMEWORK   CoreMedia    REQUIRED)
     find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+    find_library(COREAUDIO_FRAMEWORK   CoreAudio    REQUIRED)
+    find_library(FOUNDATION_FRAMEWORK  Foundation   REQUIRED)
 
     target_link_libraries(QtSoundModem PRIVATE
         "${HIDAPI_LIBRARY}"
         "${AVFOUNDATION_FRAMEWORK}"
         "${COREMEDIA_FRAMEWORK}"
-        "${COREFOUNDATION_FRAMEWORK}")
+        "${COREFOUNDATION_FRAMEWORK}"
+        "${COREAUDIO_FRAMEWORK}"
+        "${FOUNDATION_FRAMEWORK}")
 endif()
