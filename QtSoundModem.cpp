@@ -2397,6 +2397,20 @@ void QtSoundModem::doDevices()
 
 	Dev->setupUi(&UI);
 
+	// Help button — open the bundled config / GUI guide. Disable when
+	// the offline help bundle was not built into the .app.
+	{
+		const QUrl helpUrl = helpUrlFor(QStringLiteral("config/gui/index.html"));
+		if (helpUrl.isEmpty()) {
+			Dev->helpButton->setEnabled(false);
+			Dev->helpButton->setToolTip(
+				tr("Offline help not bundled with this build — try Help → G8BPQ Documentation instead."));
+		} else {
+			connect(Dev->helpButton, &QPushButton::released, this,
+				[helpUrl] { QDesktopServices::openUrl(helpUrl); });
+		}
+	}
+
 	deviceUI = &UI;
 	modemUI = 0;
 
