@@ -45,9 +45,12 @@ extern "C" void macRequestAudioAuthorisation(void)
 {
     if (@available(macOS 10.14, *))
     {
-        // Fire-and-forget request. The user sees the system prompt
-        // asynchronously; QtSoundInit() polls macAudioAuthorisationStatus()
-        // to decide whether to show its own follow-up dialog.
+        // Fire-and-forget request. The user sees the native TCC prompt
+        // asynchronously, with body text from NSMicrophoneUsageDescription
+        // in Info.plist; no Qt dialog is layered on top. On subsequent
+        // launches QtSoundInit() consults macAudioAuthorisationStatus() so
+        // it can warn the user if access has since been Denied or
+        // Restricted (states macOS will not re-prompt for).
         [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio
                                  completionHandler:^(BOOL granted) {
             (void)granted;
