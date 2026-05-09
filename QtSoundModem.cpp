@@ -609,7 +609,6 @@ void DoPSKWindows()
 	constellationDialog->resize(NextX, 140);
 }
 
-QTimer *wftimer;
 extern "C" struct timespec pttclk;
 
 QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
@@ -806,10 +805,6 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	actCalib->setMenuRole(QAction::NoRole);
 	connect(actCalib, SIGNAL(triggered()), this, SLOT(doCalibrate()));
 
-	actRestartWF = toolsMenu->addAction("Restart Waterfall");
-	actRestartWF->setMenuRole(QAction::NoRole);
-	connect(actRestartWF, SIGNAL(triggered()), this, SLOT(doRestartWF()));
-
 	actAbout = ui.menuBar->addAction("&About");
 	// About is fine to keep Qt's default TextHeuristicRole — the
 	// "About" text triggers the macOS-native heuristic that routes
@@ -965,10 +960,6 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	QTimer *statstimer = new QTimer(this);
 	connect(statstimer, SIGNAL(timeout()), this, SLOT(StatsTimer()));
 	statstimer->start(60000);		// One Minute
-
-	wftimer = new QTimer(this);
-	connect(wftimer, SIGNAL(timeout()), this, SLOT(doRestartWF()));
-//	wftimer->start(1000 * 300);
 
 	cwidtimer = new QTimer(this);
 	connect(cwidtimer, SIGNAL(timeout()), this, SLOT(CWIDTimer()));
@@ -2998,58 +2989,6 @@ void QtSoundModem::handleButton(int Port, int Type)
 
 
 
-
-void QtSoundModem::doRestartWF()
-{
-	return;
-
-	if (((tx_status[0] | tx_status[1] | tx_status[2] | tx_status[3]) != TX_SILENCE) || inWaterfall)
-	{
-		// in waterfall update thread
-
-		wftimer->start(5000);
-		return;
-	}
-
-	wftimer->start(1000 * 300);
-	
-	lockWaterfall = true;
-
-	if (Firstwaterfall | Secondwaterfall)
-	{
-		initWaterfall(0);
-		initWaterfall(1);
-	}
-
-	delete(RXLevel);
-	delete(ui.RXLevel);
-	ui.RXLevel = new QLabel(ui.centralWidget);
-	RXLevelCopy = ui.RXLevel;
-	ui.RXLevel->setGeometry(QRect(780, 14, 150, 11));
-	ui.RXLevel->setFrameShape(QFrame::Box);
-	ui.RXLevel->setFrameShadow(QFrame::Sunken);
-
-	delete(RXLevel2);
-	delete(ui.RXLevel2);
-
-	ui.RXLevel2 = new QLabel(ui.centralWidget);
-	RXLevel2Copy = ui.RXLevel2;
-
-	ui.RXLevel2->setGeometry(QRect(780, 23, 150, 11));
-	ui.RXLevel2->setFrameShape(QFrame::Box);
-	ui.RXLevel2->setFrameShadow(QFrame::Sunken);
-
-	RXLevel = new QImage(150, 10, QImage::Format_RGB32);
-	RXLevel->fill(cyan);
-
-	RXLevel2 = new QImage(150, 10, QImage::Format_RGB32);
-	RXLevel2->fill(white);
-
-	ui.RXLevel->setVisible(1);
-	ui.RXLevel2->setVisible(1);
-
-	lockWaterfall = false;
-}
 
 
 void QtSoundModem::doAbout()
