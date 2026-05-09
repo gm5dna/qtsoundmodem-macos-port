@@ -103,6 +103,12 @@ protected:
 	void resizeEvent(QResizeEvent *event) override;
 
 private:
+#if defined(Q_OS_MACOS)
+	void retuneDeviceIfNeeded(QAudioDevice &deviceInfo,
+	                          QByteArray &lastWarnedKey,
+	                          const char *direction);
+#endif
+
 	Ui::QtSoundModemClass ui;
 	QTableWidget* sessionTable;
 	QStringList m_TableHeader;

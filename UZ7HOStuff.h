@@ -914,6 +914,7 @@ extern int RX_SR;
 extern int TX_SR;
 extern int RX_PPM;
 extern int TX_PPM;
+extern int AutoRetuneSampleRate;	// macOS only; INI Init/AutoRetuneSampleRate, default 1
 extern int tx_bufsize;
 extern int rx_bufsize;
 extern int tx_bufcount;
