@@ -4373,6 +4373,112 @@ void QtSoundModem::StartWatchdog()
  #if defined(Q_OS_MACOS)
  extern "C" int macAudioAuthorisationStatus(void);
  extern "C" void macRequestAudioAuthorisation(void);
+ extern "C" int macSetDeviceNominalSampleRate(const char *uidUtf8,
+     double *outChosenRate, char *errBuf, int errBufLen);
+
+ // Result codes — kept in sync with MacAudioRate.mm.
+ enum {
+     QSM_RETUNE_OK_NO_CHANGE         =  0,
+     QSM_RETUNE_OK_CHANGED           =  1,
+     QSM_RETUNE_ERR_DEVICE_NOT_FOUND = -2,
+     QSM_RETUNE_ERR_NO_MATCHING_RATE = -3,
+     QSM_RETUNE_ERR_SET_FAILED       = -4,
+     QSM_RETUNE_ERR_TIMEOUT          = -5,
+     QSM_RETUNE_ERR_QUERY_FAILED     = -6,
+     QSM_RETUNE_ERR_NOT_SETTABLE     = -7,
+ };
+
+ static QByteArray s_lastWarnedRetuneIn;
+ static QByteArray s_lastWarnedRetuneOut;
+
+ void QtSoundModem::retuneDeviceIfNeeded(
+     QAudioDevice &deviceInfo,
+     QByteArray &lastWarnedKey,
+     const char *direction)  // "input" or "output"
+ {
+     if (!AutoRetuneSampleRate) return;          // user opt-out
+     if (deviceInfo.isNull()) return;
+     const QByteArray uid = deviceInfo.id();
+     if (uid.isEmpty()) return;
+
+     char errBuf[256] = {0};
+     double chosenRate = 0.0;
+     int rc = macSetDeviceNominalSampleRate(
+         uid.constData(), &chosenRate, errBuf, sizeof(errBuf));
+
+     if (rc == QSM_RETUNE_OK_NO_CHANGE) {
+         Debugprintf("Audio %s device '%s' already at a 12-kHz "
+             "multiple (%.0f Hz); leaving rate alone.",
+             direction,
+             deviceInfo.description().toUtf8().constData(),
+             chosenRate);
+         lastWarnedKey.clear();
+         return;
+     }
+     if (rc == QSM_RETUNE_OK_CHANGED) {
+         Debugprintf("Audio %s device '%s' retuned to %.0f Hz.",
+             direction,
+             deviceInfo.description().toUtf8().constData(),
+             chosenRate);
+         // Yield the event loop briefly so Qt's CoreAudio backend
+         // can observe the HAL change before we re-fetch a fresh
+         // QAudioDevice. Without this, isFormatSupported(48 kHz)
+         // may still report the old (pre-retune) capabilities.
+         QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+         const QList<QAudioDevice> fresh =
+             (strcmp(direction, "input") == 0)
+                 ? QMediaDevices::audioInputs()
+                 : QMediaDevices::audioOutputs();
+         for (const QAudioDevice &d : fresh) {
+             if (d.id() == uid) { deviceInfo = d; break; }
+         }
+         Debugprintf("Audio %s device handle refreshed after retune.",
+             direction);
+         lastWarnedKey.clear();
+         return;
+     }
+
+     // Failure path: log then surface a one-shot warning per UID.
+     Debugprintf("Audio %s device '%s' retune failed (rc=%d): %s",
+         direction, deviceInfo.description().toUtf8().constData(),
+         rc, errBuf);
+     if (lastWarnedKey == uid) return;
+     lastWarnedKey = uid;
+
+     QString reason;
+     switch (rc) {
+     case QSM_RETUNE_ERR_NO_MATCHING_RATE:
+         reason = tr("none of 48, 96, 24 or 12 kHz are available "
+                     "as a nominal rate on this device"); break;
+     case QSM_RETUNE_ERR_NOT_SETTABLE:
+         reason = tr("the device's sample rate is read-only and "
+                     "cannot be changed programmatically"); break;
+     case QSM_RETUNE_ERR_SET_FAILED:
+         reason = tr("CoreAudio refused the rate change "
+                     "(another application may be holding the device)");
+         break;
+     case QSM_RETUNE_ERR_TIMEOUT:
+         reason = tr("the device acknowledged the change but did "
+                     "not commit it within 2 seconds"); break;
+     case QSM_RETUNE_ERR_DEVICE_NOT_FOUND:
+         reason = tr("the device disappeared from CoreAudio's "
+                     "device list"); break;
+     case QSM_RETUNE_ERR_QUERY_FAILED:
+         reason = tr("the device's current sample rate could not "
+                     "be read"); break;
+     default:
+         reason = tr("unexpected error code %1").arg(rc); break;
+     }
+
+     QMessageBox::warning(this,
+         tr("Could not set %1 device sample rate").arg(direction),
+         tr("Could not switch \"%1\" to a 48 kHz-compatible sample "
+            "rate. Please open Audio MIDI Setup and set this device "
+            "to 48 kHz manually.\n\nDetail: %2")
+             .arg(deviceInfo.description())
+             .arg(QString::fromUtf8(errBuf).isEmpty()
+                  ? reason : QString::fromUtf8(errBuf)));
+ }
  #endif
 
  extern "C" void QtSoundModem::QtSoundInit()

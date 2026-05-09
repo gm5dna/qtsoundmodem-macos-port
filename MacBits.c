@@ -414,6 +414,7 @@ char PlaybackNames[256][256] = { "" };
 // SoundMode and bails out on the non-Qt branches.
 
 int SoundMode = 5;        // forced to Qt at config-load on macOS
+int AutoRetuneSampleRate = 1;  // INI Init/AutoRetuneSampleRate; default on
 int onlyMixSnoop = 0;
 int txLatency = 50;       // matches Init/txLatency default
 int CaptureIndex = 0;

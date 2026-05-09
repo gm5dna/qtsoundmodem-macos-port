@@ -182,6 +182,11 @@ void getSettings()
 	// the saved value so an INI imported from Linux/Windows still
 	// works. Save path persists 5 from this point on.
 	SoundMode = 5;
+	// Auto-retune the device's CoreAudio nominal rate to a 12-kHz
+	// multiple at startup so 44.1 kHz hardware doesn't force the
+	// HAL's resampler (which jitters AFSK demod). Hidden INI key
+	// — no UI control. Set 0 to disable.
+	AutoRetuneSampleRate = settings->value("Init/AutoRetuneSampleRate", 1).toInt();
 #endif
 	UDPClientPort = settings->value("Init/UDPClientPort", 8888).toInt();
 	UDPServerPort = settings->value("Init/UDPServerPort", 8884).toInt();
@@ -497,6 +502,9 @@ void saveSettings()
 		settings->setValue("PSKWindow", constellationDialog->geometry());
 
 	settings->setValue("Init/SoundMode", SoundMode);
+#if defined(Q_OS_MACOS)
+	settings->setValue("Init/AutoRetuneSampleRate", AutoRetuneSampleRate);
+#endif
 	settings->setValue("Init/UDPClientPort", UDPClientPort);
 	settings->setValue("Init/UDPServerPort", UDPServerPort);
 	settings->setValue("Init/TXPort", TXPort);
