@@ -1680,6 +1680,19 @@ void QtSoundModem::doModems()
 
 	Dlg->setupUi(&UI);
 
+	// Help button — open the bundled per-channel modem guide.
+	{
+		const QUrl helpUrl = helpUrlFor(QStringLiteral("config/per-channel/index.html"));
+		if (helpUrl.isEmpty()) {
+			Dlg->helpButton->setEnabled(false);
+			Dlg->helpButton->setToolTip(
+				tr("Offline help not bundled with this build — try Help → G8BPQ Documentation instead."));
+		} else {
+			connect(Dlg->helpButton, &QPushButton::released, this,
+				[helpUrl] { QDesktopServices::openUrl(helpUrl); });
+		}
+	}
+
 	modemUI = &UI;
 	deviceUI = 0;
 
