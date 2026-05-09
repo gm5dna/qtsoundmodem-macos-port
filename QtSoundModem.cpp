@@ -51,8 +51,10 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 #include <QFileInfo>
 #include <QDir>
 #include <QCoreApplication>
+#include <QDesktopServices>
 #include <QMutex>
 #include <QStyleHints>
+#include <QWhatsThis>
 
 #include "UZ7HOStuff.h"
 
@@ -850,11 +852,57 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	actCalib->setMenuRole(QAction::NoRole);
 	connect(actCalib, SIGNAL(triggered()), this, SLOT(doCalibrate()));
 
-	actAbout = ui.menuBar->addAction("&About");
-	// About is fine to keep Qt's default TextHeuristicRole — the
-	// "About" text triggers the macOS-native heuristic that routes
-	// it into the application menu as "About QtSoundModem", where
-	// users expect it.
+	// Help menu — sits rightmost; on macOS the system Help slot picks it
+	// up automatically when the menu is titled "Help".
+	QMenu *helpMenu = ui.menuBar->addMenu(tr("&Help"));
+	// QMenu does not show action tooltips by default — so the disabled
+	// "User Guide (offline)" entry below would be silent without this.
+	helpMenu->setToolTipsVisible(true);
+
+	// User Guide (offline): bundled qtsm-docs/site/index.html. If the
+	// bundle is missing (CMake QTSM_DOCS_SITE not pointing at a built
+	// site), helpUrlFor() returns an empty QUrl — disable the entry
+	// rather than offer a dead click.
+	QAction *actUserGuide = helpMenu->addAction(tr("&User Guide (offline)"));
+	actUserGuide->setMenuRole(QAction::NoRole);
+	const QUrl userGuideUrl = helpUrlFor(QStringLiteral("index.html"));
+	if (userGuideUrl.isEmpty()) {
+		actUserGuide->setEnabled(false);
+		actUserGuide->setToolTip(
+			tr("Offline help bundle not built — see CMake QTSM_DOCS_SITE"));
+	} else {
+		connect(actUserGuide, &QAction::triggered, this,
+			[userGuideUrl] { QDesktopServices::openUrl(userGuideUrl); });
+	}
+
+	// Authoritative reference is G8BPQ's cantab.net page — always available
+	// online, regardless of whether the offline bundle was built.
+	QAction *actG8BPQOnline = helpMenu->addAction(
+		tr("&G8BPQ Documentation (online)"));
+	actG8BPQOnline->setMenuRole(QAction::NoRole);
+	connect(actG8BPQOnline, &QAction::triggered, this, [] {
+		QDesktopServices::openUrl(QUrl(QStringLiteral(
+			"https://www.cantab.net/users/john.wiseman/Documents/QtSoundModem.html")));
+	});
+
+	helpMenu->addSeparator();
+
+	// "What's This?" mode — clicking enters the standard Qt hover-help
+	// mode. macOS does not show the title-bar "?" button, so a menu entry
+	// (and the Shift+F1 shortcut) is the only discoverable trigger.
+	QAction *actWhatsThis = helpMenu->addAction(tr("What's &This?"));
+	actWhatsThis->setShortcut(QKeySequence::WhatsThis);
+	actWhatsThis->setMenuRole(QAction::NoRole);
+	connect(actWhatsThis, &QAction::triggered, this,
+		[] { QWhatsThis::enterWhatsThisMode(); });
+
+	helpMenu->addSeparator();
+
+	actAbout = helpMenu->addAction(tr("&About QtSoundModem"));
+	// AboutRole routes this entry into the macOS App menu's "About
+	// QtSoundModem" slot, so it disappears from the Help menu on macOS
+	// and lands where users expect. On other platforms it stays under Help.
+	actAbout->setMenuRole(QAction::AboutRole);
 	connect(actAbout, SIGNAL(triggered()), this, SLOT(doAbout()));
 
 	RXLevel = new QImage(150, 10, QImage::Format_RGB32);
@@ -3086,8 +3134,14 @@ void QtSoundModem::handleButton(int Port, int Type)
 
 void QtSoundModem::doAbout()
 {
-	QMessageBox::about(this, tr("About"),
-		tr("G8BPQ's port of UZ7HO's Soundmodem\n\nCopyright (C) 2019-2020 Andrei Kopanchuk UZ7HO"));
+	// QMessageBox::about renders rich text when the message contains
+	// HTML markup, so the cantab.net link is clickable.
+	QMessageBox::about(this, tr("About QtSoundModem"),
+		tr("<p>G8BPQ's port of UZ7HO's Soundmodem.</p>"
+		   "<p>Copyright (C) 2019-2020 Andrei Kopanchuk UZ7HO</p>"
+		   "<p>Authoritative documentation: "
+		   "<a href=\"https://www.cantab.net/users/john.wiseman/Documents/QtSoundModem.html\">"
+		   "G8BPQ — QtSoundModem</a></p>"));
 }
 
 void QtSoundModem::doCalibrate()
