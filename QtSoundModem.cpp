@@ -2610,6 +2610,29 @@ void QtSoundModem::mysetstyle()
 	}
 }
 
+#if defined(Q_OS_MACOS)
+// macOS device-rate retune wiring. The C entry lives in
+// MacAudioRate.mm; result codes mirror QSM_RETUNE_* there.
+// The two QByteArrays gate the per-device "couldn't change rate"
+// warning so it shows once per UID rather than on every audio
+// event. They live at file scope because three call sites
+// (deviceaccept, QtSoundInit, onAudioDevicesChanged) need them.
+extern "C" int macSetDeviceNominalSampleRate(const char *uidUtf8,
+    double *outChosenRate, char *errBuf, int errBufLen);
+enum {
+    QSM_RETUNE_OK_NO_CHANGE         =  0,
+    QSM_RETUNE_OK_CHANGED           =  1,
+    QSM_RETUNE_ERR_DEVICE_NOT_FOUND = -2,
+    QSM_RETUNE_ERR_NO_MATCHING_RATE = -3,
+    QSM_RETUNE_ERR_SET_FAILED       = -4,
+    QSM_RETUNE_ERR_TIMEOUT          = -5,
+    QSM_RETUNE_ERR_QUERY_FAILED     = -6,
+    QSM_RETUNE_ERR_NOT_SETTABLE     = -7,
+};
+static QByteArray s_lastWarnedRetuneIn;
+static QByteArray s_lastWarnedRetuneOut;
+#endif
+
 void QtSoundModem::deviceaccept()
 {
 	QVariant Q = Dev->inputDevice->currentText();
@@ -2961,6 +2984,27 @@ void QtSoundModem::deviceaccept()
 
 				inDeviceInfo = inputDevicesFiltered[CaptureIndex];
 				outDeviceInfo = outputDevicesFiltered[PlayBackIndex];
+
+#if defined(Q_OS_MACOS)
+				// Streams are now closed and the user-chosen
+				// QAudioDevice handles have just been assigned.
+				// Retune the new selection before initializeAudio*
+				// opens it — same dedup as QtSoundInit.
+				retuneDeviceIfNeeded(inDeviceInfo, s_lastWarnedRetuneIn, "input");
+
+				if (!outDeviceInfo.isNull() &&
+				    !inDeviceInfo.isNull() &&
+				    outDeviceInfo.id() == inDeviceInfo.id()) {
+					Debugprintf("RX and TX share a CoreAudio UID — output retune skipped.");
+					const QList<QAudioDevice> fresh = QMediaDevices::audioOutputs();
+					for (const QAudioDevice &d : fresh) {
+						if (d.id() == outDeviceInfo.id()) { outDeviceInfo = d; break; }
+					}
+				} else {
+					retuneDeviceIfNeeded(outDeviceInfo, s_lastWarnedRetuneOut, "output");
+				}
+#endif
+
 				initializeAudioOut(outDeviceInfo);
 				initializeAudioIn(inDeviceInfo);
 			}
@@ -4373,23 +4417,6 @@ void QtSoundModem::StartWatchdog()
  #if defined(Q_OS_MACOS)
  extern "C" int macAudioAuthorisationStatus(void);
  extern "C" void macRequestAudioAuthorisation(void);
- extern "C" int macSetDeviceNominalSampleRate(const char *uidUtf8,
-     double *outChosenRate, char *errBuf, int errBufLen);
-
- // Result codes — kept in sync with MacAudioRate.mm.
- enum {
-     QSM_RETUNE_OK_NO_CHANGE         =  0,
-     QSM_RETUNE_OK_CHANGED           =  1,
-     QSM_RETUNE_ERR_DEVICE_NOT_FOUND = -2,
-     QSM_RETUNE_ERR_NO_MATCHING_RATE = -3,
-     QSM_RETUNE_ERR_SET_FAILED       = -4,
-     QSM_RETUNE_ERR_TIMEOUT          = -5,
-     QSM_RETUNE_ERR_QUERY_FAILED     = -6,
-     QSM_RETUNE_ERR_NOT_SETTABLE     = -7,
- };
-
- static QByteArray s_lastWarnedRetuneIn;
- static QByteArray s_lastWarnedRetuneOut;
 
  void QtSoundModem::retuneDeviceIfNeeded(
      QAudioDevice &deviceInfo,
