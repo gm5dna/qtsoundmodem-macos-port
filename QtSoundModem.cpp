@@ -4354,20 +4354,13 @@ void QtSoundModem::StartWatchdog()
 	int authStatus = macAudioAuthorisationStatus();
 	if (authStatus == 0) // NotDetermined
 	{
-		// First run — fire the request. The system prompt is async
-		// and the user might not click Allow before we open the
-		// QAudioSource below; rather than try to re-open the source
-		// from inside the AVFoundation completion block (which would
-		// need careful Qt-thread routing), tell the user to restart
-		// once they've granted. Audio still starts up; if they grant
-		// and don't restart, decode will start working at 5–10 s
-		// when CoreAudio reports the new permission.
+		// First run — fire the request. The system prompt is async; if
+		// the user grants whilst QAudioSource is already open with zero
+		// samples, decode begins working within 5–10 s once CoreAudio
+		// reports the new permission. The native TCC prompt (driven by
+		// NSMicrophoneUsageDescription in Info.plist) is sufficient on
+		// its own — no follow-up Qt dialog needed.
 		macRequestAudioAuthorisation();
-		QMessageBox::information(this, tr("Microphone permission required"),
-			tr("QtSoundModem needs microphone access to decode AX.25, "
-			   "ARDOP and IL2P audio. Click Allow on the system prompt, "
-			   "then restart QtSoundModem if decoding does not start "
-			   "within a few seconds."));
 	}
 	else if (authStatus == 1 || authStatus == 2) // Restricted or Denied
 	{
