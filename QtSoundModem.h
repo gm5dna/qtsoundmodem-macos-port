@@ -13,6 +13,7 @@
 #include <QTcpSocket>
 #include <QUdpSocket>
 #include <QSystemTrayIcon>
+#include <QUrl>
 #include <QtMultimedia/QAudioDevice>
 #include <QtMultimedia/QAudioSink>
 #include <QtMultimedia/QAudioSource>
@@ -37,6 +38,14 @@ public:
 	void initWaterfall(int state);
 	void show_grid();
 	void checkforCWID();
+
+	// Locate a page inside the bundled offline help. Returns an empty QUrl
+	// if either the bundle or the requested page is missing — callers should
+	// treat that as "offline help not available" and either disable the menu
+	// entry or fall back to the online G8BPQ page. Pass a sub-path like
+	// "index.html" or "config/gui.html"; on macOS the file is looked up under
+	// QtSoundModem.app/Contents/Resources/help/.
+	static QUrl helpUrlFor(const QString &page);
 
 public slots:
 
