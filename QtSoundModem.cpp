@@ -48,6 +48,9 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 #include <QScrollBar>
 #include <QFontDatabase>
 #include <QFile>
+#include <QFileInfo>
+#include <QDir>
+#include <QCoreApplication>
 #include <QMutex>
 #include <QStyleHints>
 
@@ -630,6 +633,25 @@ void DoPSKWindows()
 }
 
 extern "C" struct timespec pttclk;
+
+// Locate a page in the bundled offline help. On macOS the help tree lives
+// in QtSoundModem.app/Contents/Resources/help/; CMake (QTSM_DOCS_SITE)
+// copies it from qtsm-docs/site/ at build time. Returns an empty QUrl
+// if the bundle was not built in (graceful degrade — see CMakeLists.txt).
+QUrl QtSoundModem::helpUrlFor(const QString &page)
+{
+#if defined(Q_OS_MACOS)
+	const QString base = QCoreApplication::applicationDirPath()
+		+ QStringLiteral("/../Resources/help/");
+#else
+	const QString base = QCoreApplication::applicationDirPath()
+		+ QStringLiteral("/help/");
+#endif
+	const QString full = QDir::cleanPath(base + page);
+	if (!QFileInfo::exists(full))
+		return QUrl();
+	return QUrl::fromLocalFile(full);
+}
 
 QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 {
