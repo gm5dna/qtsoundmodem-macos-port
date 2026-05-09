@@ -3172,6 +3172,19 @@ void QtSoundModem::doCalibrate()
 		connect(Calibrate.Stop_D, SIGNAL(released()), this, SLOT(clickedSlot()));
 		connect(Calibrate.Cal1500, SIGNAL(released()), this, SLOT(clickedSlot()));
 
+		// Help button — open the bundled calibration guide. Disable if the
+		// offline help bundle was not built into the .app (helpUrlFor()
+		// returns empty when QTSM_DOCS_SITE was missing at configure time).
+		const QUrl helpUrl = helpUrlFor(QStringLiteral("audio/calibrate-busy/index.html"));
+		if (helpUrl.isEmpty()) {
+			Calibrate.helpButton->setEnabled(false);
+			Calibrate.helpButton->setToolTip(
+				tr("Offline help not bundled with this build — try Help → G8BPQ Documentation instead."));
+		} else {
+			connect(Calibrate.helpButton, &QPushButton::released, this,
+				[helpUrl] { QDesktopServices::openUrl(helpUrl); });
+		}
+
 		/*
 		
 		connect(Calibrate.Low_A, &QPushButton::released, this, [=] { handleButton(0, 1); });
