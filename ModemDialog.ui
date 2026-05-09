@@ -90,9 +90,6 @@
         <property name="toolTip">
          <string>TX delay (ms) — quiet pause between PTT keying and the first frame bit, so the radio's transmitter can come up to power.</string>
         </property>
-        <property name="whatsThis">
-         <string>&lt;b&gt;Channel A TX delay (ms)&lt;/b&gt;&lt;br/&gt;Time the modem waits between asserting PTT and starting to send data. Must be at least as long as the radio's TX rise time, plus any squelch-tail on the receiving end. Typical: 150–300 ms for VHF FM (default 250), 300–500 ms for HF SSB or radios with slow PTT. Stored as &lt;tt&gt;Modem/TxDelay1&lt;/tt&gt;.</string>
-        </property>
        </widget>
        <widget class="QLineEdit" name="TXTailA">
         <property name="geometry">
@@ -105,9 +102,6 @@
         </property>
         <property name="toolTip">
          <string>TX tail (ms) — silence after the last bit before PTT drops. Helps the receiving station's squelch close cleanly.</string>
-        </property>
-        <property name="whatsThis">
-         <string>&lt;b&gt;Channel A TX tail (ms)&lt;/b&gt;&lt;br/&gt;Time the modem keeps PTT keyed after the last data bit. Allows the receiver's squelch tail and the radio's PA to settle. Typically 50–150 ms. Stored as &lt;tt&gt;Modem/TxTail1&lt;/tt&gt;.</string>
         </property>
        </widget>
        <widget class="QLineEdit" name="AddRXA">
@@ -289,9 +283,6 @@
         </item>
         <property name="toolTip">
          <string>FX.25 mode — Reed-Solomon FEC wrapper. None / RX only / RX+TX. RX-only is safe to leave on; TX requires a peer that understands FX.25.</string>
-        </property>
-        <property name="whatsThis">
-         <string>&lt;b&gt;Channel A FX.25 mode&lt;/b&gt;&lt;br/&gt;FX.25 wraps standard AX.25 frames in a Reed-Solomon FEC block, so a peer without FX.25 still decodes them as plain AX.25. None disables decode/encode; RX only decodes incoming FX.25; RX+TX also encodes outgoing frames. Default: RX only. Stored as &lt;tt&gt;[AX25_A]/FX25&lt;/tt&gt;.</string>
         </property>
        </widget>
        <widget class="QLabel" name="label_17">
@@ -480,9 +471,6 @@
         </item>
         <property name="toolTip">
          <string>IL2P mode — Improved Layer 2 framing. None / RX only / RX+TX / IL2P only. IL2P-only stations cannot talk to AX.25-only stations.</string>
-        </property>
-        <property name="whatsThis">
-         <string>&lt;b&gt;Channel A IL2P mode&lt;/b&gt;&lt;br/&gt;Improved Layer 2 Protocol — FEC framing that supersedes plain AX.25 on noisy paths. None / RX only / RX+TX (every outgoing frame is sent twice — once IL2P, once plain HDLC for back-compat) / IL2P only (refuses non-IL2P frames). The Send CRC and Check CRC checkboxes on this tab control QtSM's IL2P CRC extension. Stored as &lt;tt&gt;[AX25_A]/IL2P&lt;/tt&gt; (0/1/2/3) and &lt;tt&gt;IL2PCRC&lt;/tt&gt;.</string>
         </property>
        </widget>
        <widget class="QLabel" name="label_87">
@@ -1268,9 +1256,6 @@
         <property name="toolTip">
          <string>TX delay (ms) — quiet pause between PTT keying and the first frame bit, so the radio's transmitter can come up to power.</string>
         </property>
-        <property name="whatsThis">
-         <string>&lt;b&gt;Channel B TX delay (ms)&lt;/b&gt;&lt;br/&gt;Time the modem waits between asserting PTT and starting to send data. Must be at least as long as the radio's TX rise time, plus any squelch-tail on the receiving end. Typical: 150–300 ms for VHF FM (default 250), 300–500 ms for HF SSB or radios with slow PTT. Stored as &lt;tt&gt;Modem/TxDelay2&lt;/tt&gt;.</string>
-        </property>
        </widget>
        <widget class="QLineEdit" name="TXTailB">
         <property name="geometry">
@@ -1283,9 +1268,6 @@
         </property>
         <property name="toolTip">
          <string>TX tail (ms) — silence after the last bit before PTT drops. Helps the receiving station's squelch close cleanly.</string>
-        </property>
-        <property name="whatsThis">
-         <string>&lt;b&gt;Channel B TX tail (ms)&lt;/b&gt;&lt;br/&gt;Time the modem keeps PTT keyed after the last data bit. Allows the receiver's squelch tail and the radio's PA to settle. Typically 50–150 ms. Stored as &lt;tt&gt;Modem/TxTail2&lt;/tt&gt;.</string>
         </property>
        </widget>
        <widget class="QLineEdit" name="AddRXB">
@@ -1467,9 +1449,6 @@
         </item>
         <property name="toolTip">
          <string>FX.25 mode — Reed-Solomon FEC wrapper. None / RX only / RX+TX. RX-only is safe to leave on; TX requires a peer that understands FX.25.</string>
-        </property>
-        <property name="whatsThis">
-         <string>&lt;b&gt;Channel B FX.25 mode&lt;/b&gt;&lt;br/&gt;FX.25 wraps standard AX.25 frames in a Reed-Solomon FEC block, so a peer without FX.25 still decodes them as plain AX.25. None disables decode/encode; RX only decodes incoming FX.25; RX+TX also encodes outgoing frames. Default: RX only. Stored as &lt;tt&gt;[AX25_B]/FX25&lt;/tt&gt;.</string>
         </property>
        </widget>
        <widget class="QLabel" name="label_33">
@@ -1658,9 +1637,6 @@
         </item>
         <property name="toolTip">
          <string>IL2P mode — Improved Layer 2 framing. None / RX only / RX+TX / IL2P only. IL2P-only stations cannot talk to AX.25-only stations.</string>
-        </property>
-        <property name="whatsThis">
-         <string>&lt;b&gt;Channel B IL2P mode&lt;/b&gt;&lt;br/&gt;Improved Layer 2 Protocol — FEC framing that supersedes plain AX.25 on noisy paths. None / RX only / RX+TX (every outgoing frame is sent twice — once IL2P, once plain HDLC for back-compat) / IL2P only (refuses non-IL2P frames). The Send CRC and Check CRC checkboxes on this tab control QtSM's IL2P CRC extension. Stored as &lt;tt&gt;[AX25_B]/IL2P&lt;/tt&gt; (0/1/2/3) and &lt;tt&gt;IL2PCRC&lt;/tt&gt;.</string>
         </property>
        </widget>
        <widget class="QCheckBox" name="CRCRX_B">
@@ -2150,9 +2126,6 @@
         <property name="toolTip">
          <string>TX delay (ms) — quiet pause between PTT keying and the first frame bit, so the radio's transmitter can come up to power.</string>
         </property>
-        <property name="whatsThis">
-         <string>&lt;b&gt;Channel C TX delay (ms)&lt;/b&gt;&lt;br/&gt;Time the modem waits between asserting PTT and starting to send data. Must be at least as long as the radio's TX rise time, plus any squelch-tail on the receiving end. Typical: 150–300 ms for VHF FM (default 250), 300–500 ms for HF SSB or radios with slow PTT. Stored as &lt;tt&gt;Modem/TxDelay3&lt;/tt&gt;.</string>
-        </property>
        </widget>
        <widget class="QLineEdit" name="TXTailC">
         <property name="geometry">
@@ -2165,9 +2138,6 @@
         </property>
         <property name="toolTip">
          <string>TX tail (ms) — silence after the last bit before PTT drops. Helps the receiving station's squelch close cleanly.</string>
-        </property>
-        <property name="whatsThis">
-         <string>&lt;b&gt;Channel C TX tail (ms)&lt;/b&gt;&lt;br/&gt;Time the modem keeps PTT keyed after the last data bit. Allows the receiver's squelch tail and the radio's PA to settle. Typically 50–150 ms. Stored as &lt;tt&gt;Modem/TxTail3&lt;/tt&gt;.</string>
         </property>
        </widget>
        <widget class="QLineEdit" name="AddRXC">
@@ -2349,9 +2319,6 @@
         </item>
         <property name="toolTip">
          <string>FX.25 mode — Reed-Solomon FEC wrapper. None / RX only / RX+TX. RX-only is safe to leave on; TX requires a peer that understands FX.25.</string>
-        </property>
-        <property name="whatsThis">
-         <string>&lt;b&gt;Channel C FX.25 mode&lt;/b&gt;&lt;br/&gt;FX.25 wraps standard AX.25 frames in a Reed-Solomon FEC block, so a peer without FX.25 still decodes them as plain AX.25. None disables decode/encode; RX only decodes incoming FX.25; RX+TX also encodes outgoing frames. Default: RX only. Stored as &lt;tt&gt;[AX25_C]/FX25&lt;/tt&gt;.</string>
         </property>
        </widget>
        <widget class="QLabel" name="label_49">
@@ -2612,9 +2579,6 @@
        </item>
        <property name="toolTip">
         <string>IL2P mode — Improved Layer 2 framing. Off / RX only / RX+TX / IL2P only. IL2P-only stations cannot talk to AX.25-only stations.</string>
-       </property>
-       <property name="whatsThis">
-        <string>&lt;b&gt;Channel C IL2P mode&lt;/b&gt;&lt;br/&gt;Improved Layer 2 Protocol — FEC framing that supersedes plain AX.25 on noisy paths. None / RX only / RX+TX (every outgoing frame is sent twice — once IL2P, once plain HDLC for back-compat) / IL2P only (refuses non-IL2P frames). The Send CRC and Check CRC checkboxes on this tab control QtSM's IL2P CRC extension. Stored as &lt;tt&gt;[AX25_C]/IL2P&lt;/tt&gt; (0/1/2/3) and &lt;tt&gt;IL2PCRC&lt;/tt&gt;.</string>
        </property>
       </widget>
       <widget class="QLabel" name="label_85">
@@ -3032,9 +2996,6 @@
         <property name="toolTip">
          <string>TX delay (ms) — quiet pause between PTT keying and the first frame bit, so the radio's transmitter can come up to power.</string>
         </property>
-        <property name="whatsThis">
-         <string>&lt;b&gt;Channel D TX delay (ms)&lt;/b&gt;&lt;br/&gt;Time the modem waits between asserting PTT and starting to send data. Must be at least as long as the radio's TX rise time, plus any squelch-tail on the receiving end. Typical: 150–300 ms for VHF FM (default 250), 300–500 ms for HF SSB or radios with slow PTT. Stored as &lt;tt&gt;Modem/TxDelay4&lt;/tt&gt;.</string>
-        </property>
        </widget>
        <widget class="QLineEdit" name="TXTailD">
         <property name="geometry">
@@ -3047,9 +3008,6 @@
         </property>
         <property name="toolTip">
          <string>TX tail (ms) — silence after the last bit before PTT drops. Helps the receiving station's squelch close cleanly.</string>
-        </property>
-        <property name="whatsThis">
-         <string>&lt;b&gt;Channel D TX tail (ms)&lt;/b&gt;&lt;br/&gt;Time the modem keeps PTT keyed after the last data bit. Allows the receiver's squelch tail and the radio's PA to settle. Typically 50–150 ms. Stored as &lt;tt&gt;Modem/TxTail4&lt;/tt&gt;.</string>
         </property>
        </widget>
        <widget class="QLineEdit" name="AddRXD">
@@ -3231,9 +3189,6 @@
         </item>
         <property name="toolTip">
          <string>FX.25 mode — Reed-Solomon FEC wrapper. None / RX only / RX+TX. RX-only is safe to leave on; TX requires a peer that understands FX.25.</string>
-        </property>
-        <property name="whatsThis">
-         <string>&lt;b&gt;Channel D FX.25 mode&lt;/b&gt;&lt;br/&gt;FX.25 wraps standard AX.25 frames in a Reed-Solomon FEC block, so a peer without FX.25 still decodes them as plain AX.25. None disables decode/encode; RX only decodes incoming FX.25; RX+TX also encodes outgoing frames. Default: RX only. Stored as &lt;tt&gt;[AX25_D]/FX25&lt;/tt&gt;.</string>
         </property>
        </widget>
        <widget class="QLabel" name="label_65">
@@ -3495,9 +3450,6 @@
        <property name="toolTip">
         <string>IL2P mode — Improved Layer 2 framing. Off / RX only / RX+TX / IL2P only. IL2P-only stations cannot talk to AX.25-only stations.</string>
        </property>
-       <property name="whatsThis">
-        <string>&lt;b&gt;Channel D IL2P mode&lt;/b&gt;&lt;br/&gt;Improved Layer 2 Protocol — FEC framing that supersedes plain AX.25 on noisy paths. None / RX only / RX+TX (every outgoing frame is sent twice — once IL2P, once plain HDLC for back-compat) / IL2P only (refuses non-IL2P frames). The Send CRC and Check CRC checkboxes on this tab control QtSM's IL2P CRC extension. Stored as &lt;tt&gt;[AX25_D]/IL2P&lt;/tt&gt; (0/1/2/3) and &lt;tt&gt;IL2PCRC&lt;/tt&gt;.</string>
-       </property>
       </widget>
       <widget class="QLabel" name="label_86">
        <property name="geometry">
@@ -3515,25 +3467,6 @@
      </widget>
     </widget>
    </widget>
-  </widget>
-  <widget class="QPushButton" name="helpButton">
-   <property name="geometry">
-    <rect>
-     <x>540</x>
-     <y>600</y>
-     <width>30</width>
-     <height>23</height>
-    </rect>
-   </property>
-   <property name="text">
-    <string>?</string>
-   </property>
-   <property name="toolTip">
-    <string>Open the per-channel modem help page in the browser.</string>
-   </property>
-   <property name="whatsThis">
-    <string>&lt;b&gt;Help&lt;/b&gt;&lt;br/&gt;Opens the bundled per-channel configuration guide. Disabled when the offline help bundle is unavailable.</string>
-   </property>
   </widget>
   <widget class="QWidget" name="layoutWidget">
    <property name="geometry">

@@ -70,9 +70,6 @@
       <property name="toolTip">
        <string>Sound card used to send TX audio to the radio. Pick a stereo device — even if you only use one channel.</string>
       </property>
-      <property name="whatsThis">
-       <string>&lt;b&gt;TX audio output device&lt;/b&gt;&lt;br/&gt;Sound card whose output is wired to the radio's mic / data input. Must be a stereo device — the modem encodes left/right per modem-pair (see Modem 1–4 channel assignment below). Stored as &lt;tt&gt;Init/SndTXDeviceName&lt;/tt&gt;.</string>
-      </property>
      </widget>
      <widget class="QComboBox" name="inputDevice">
       <property name="geometry">
@@ -88,9 +85,6 @@
       </property>
       <property name="toolTip">
        <string>Sound card used to receive audio from the radio. Mono and stereo Int16 devices are both accepted; mono is broadcast to stereo internally.</string>
-      </property>
-      <property name="whatsThis">
-       <string>&lt;b&gt;RX audio input device&lt;/b&gt;&lt;br/&gt;Sound card whose input is wired to the radio's audio output. The modem feed expects 12 kHz Int16 samples; the macOS port handles mono and stereo inputs, decimating from 24/48/96 kHz when needed. Devices with float sample format or unusual rates are refused with a message in the trace pane. Stored as &lt;tt&gt;Init/SndRXDeviceName&lt;/tt&gt;.</string>
       </property>
      </widget>
      <widget class="QLabel" name="label">
@@ -243,9 +237,6 @@
       </item>
       <property name="toolTip">
        <string>Sound-card channel for modem 1 (channel A). None = disabled, Left = left audio channel, Right = right.</string>
-      </property>
-      <property name="whatsThis">
-       <string>&lt;b&gt;Modem 1 sound channel&lt;/b&gt;&lt;br/&gt;Routes channel A's audio to one of the sound-card stereo channels. To run two modems on a single stereo card, set modem 1 to Left/Mono and modem 2 to Right (or vice versa). Stored as &lt;tt&gt;Modem/soundChannel1&lt;/tt&gt; (1=LEFT, 2=RIGHT, 0=disabled).</string>
       </property>
      </widget>
      <widget class="QLabel" name="label_12">
@@ -669,9 +660,6 @@
       <property name="toolTip">
        <string>Use Qt Multimedia for audio I/O. The macOS port forces this backend at launch.</string>
       </property>
-      <property name="whatsThis">
-       <string>&lt;b&gt;QSound (Qt Multimedia) backend&lt;/b&gt;&lt;br/&gt;Cross-platform audio via Qt's QAudioSource/QAudioSink. The macOS port forces this backend (SoundMode = 5); upstream offers it on Linux/Windows but native ALSA/WaveOut is more common there. Stored as &lt;tt&gt;Init/SoundMode = 5&lt;/tt&gt;.</string>
-      </property>
      </widget>
     </widget>
     <widget class="QGroupBox" name="Goup">
@@ -711,9 +699,6 @@
       <property name="toolTip">
        <string>TCP port for the AGWPE-compatible server (default 8000). Clients like UI-View, BPQ, and many APRS apps connect here.</string>
       </property>
-      <property name="whatsThis">
-       <string>&lt;b&gt;AGWPE server port&lt;/b&gt;&lt;br/&gt;Listens for AGWPE protocol clients on this TCP port. Standard default is 8000. Bound to all interfaces — anything on your network can connect, so firewall accordingly. Stored as &lt;tt&gt;AGWHost/Port&lt;/tt&gt;.</string>
-      </property>
      </widget>
      <widget class="QLineEdit" name="KISSPort">
       <property name="geometry">
@@ -726,9 +711,6 @@
       </property>
       <property name="toolTip">
        <string>TCP port for the KISS-over-TCP server (default 8105 in this fork). Clients like LinBPQ/BPQ32 and JNOS connect here.</string>
-      </property>
-      <property name="whatsThis">
-       <string>&lt;b&gt;KISS server port&lt;/b&gt;&lt;br/&gt;Listens for KISS-over-TCP clients. Note: the default is &lt;tt&gt;8105&lt;/tt&gt;, not the historical 8100 — see the bundled docs &quot;undocumented behaviour&quot; page. Bound to all interfaces. Stored as &lt;tt&gt;KISS/Port&lt;/tt&gt;.</string>
       </property>
      </widget>
      <widget class="QLabel" name="label_4">
@@ -1027,9 +1009,6 @@
       <property name="toolTip">
        <string>How to key the radio's PTT. Pick a serial port name, FLRig/Hamlib host, GPIO, CM108, or one of the special values.</string>
       </property>
-      <property name="whatsThis">
-       <string>&lt;b&gt;PTT port / method&lt;/b&gt;&lt;br/&gt;Selects how QtSoundModem keys the radio:&lt;br/&gt;• A serial-port path (e.g. /dev/cu.usbserial-XYZ) — combine with RTS/DTR/CAT below&lt;br/&gt;• &lt;tt&gt;HAMLIB&lt;/tt&gt; — speaks rigctld TCP; host/port go in the fields that appear&lt;br/&gt;• &lt;tt&gt;FLRIG&lt;/tt&gt; — speaks XML-RPC to FLRig; host/port likewise&lt;br/&gt;• &lt;tt&gt;GPIO&lt;/tt&gt; — Raspberry Pi GPIO pin (Linux only)&lt;br/&gt;• &lt;tt&gt;CM108&lt;/tt&gt; — USB sound + HID PTT chip.&lt;br/&gt;Stored as &lt;tt&gt;Init/PTT&lt;/tt&gt;.</string>
-      </property>
      </widget>
      <widget class="QLabel" name="label_5">
       <property name="geometry">
@@ -1218,9 +1197,6 @@
       <property name="toolTip">
        <string>CM108-style HID device for PTT — hex VID:PID with 0x prefix (e.g. 0xD8C:0x08) or a hidraw path.</string>
       </property>
-      <property name="whatsThis">
-       <string>&lt;b&gt;CM108 VID/PID or HID path&lt;/b&gt;&lt;br/&gt;Identifies the USB sound + GPIO chip used for PTT. Format: hex &lt;tt&gt;VID:PID&lt;/tt&gt; with the &lt;tt&gt;0x&lt;/tt&gt; prefix (e.g. &lt;tt&gt;0xD8C:0x08&lt;/tt&gt; — the default CMedia value), or an absolute hidraw path on Linux. Find the IDs with &lt;tt&gt;lsusb&lt;/tt&gt; (Linux) or System Information → USB (macOS). Stored as &lt;tt&gt;Init/CM108Addr&lt;/tt&gt;.</string>
-      </property>
      </widget>
      <widget class="QLabel" name="CM108Label">
       <property name="geometry">
@@ -1267,25 +1243,6 @@
        <string>Use the serial port's DTR line as PTT. Some cables wire PTT to DTR rather than RTS.</string>
       </property>
      </widget>
-    </widget>
-    <widget class="QPushButton" name="helpButton">
-     <property name="geometry">
-      <rect>
-       <x>540</x>
-       <y>705</y>
-       <width>30</width>
-       <height>23</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string>?</string>
-     </property>
-     <property name="toolTip">
-      <string>Open the Setup Devices help page in the browser.</string>
-     </property>
-     <property name="whatsThis">
-      <string>&lt;b&gt;Help&lt;/b&gt;&lt;br/&gt;Opens the bundled Devices / configuration guide in the system browser. Disabled when the offline help bundle is unavailable.</string>
-     </property>
     </widget>
     <widget class="QWidget" name="layoutWidget">
      <property name="geometry">
