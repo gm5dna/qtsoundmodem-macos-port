@@ -4682,6 +4682,37 @@ void QtSoundModem::StartWatchdog()
 	 // valid again. If our streams were torn down on a previous
 	 // unplug they're still null — reopen automatically so the user
 	 // does not have to revisit the Devices dialog.
+
+#if defined(Q_OS_MACOS)
+	 // Streams on the affected device(s) were just torn down by the
+	 // teardown branches above (or were already null). We are now in
+	 // the safe window: device handle valid, no QAudioSource/Sink open
+	 // on it. Re-apply the rate policy here before the reopen blocks
+	 // below call initializeAudio*. If we retuned during a live stream,
+	 // CoreAudio's HAL would interrupt the running graph and may SIGSEGV
+	 // in the listener-block path. Same dedup as QtSoundInit().
+	 const bool inAboutToReopen =
+		 !inGone && !m_audioInput && !inDeviceInfo.isNull();
+	 const bool outAboutToReopen =
+		 !outGone && !m_audioOutput && !outDeviceInfo.isNull();
+
+	 if (inAboutToReopen)
+		 retuneDeviceIfNeeded(inDeviceInfo, s_lastWarnedRetuneIn, "input");
+
+	 if (outAboutToReopen) {
+		 if (inAboutToReopen &&
+		     outDeviceInfo.id() == inDeviceInfo.id()) {
+			 Debugprintf("RX and TX share a CoreAudio UID — output retune skipped.");
+			 const QList<QAudioDevice> fresh = QMediaDevices::audioOutputs();
+			 for (const QAudioDevice &d : fresh) {
+				 if (d.id() == outDeviceInfo.id()) { outDeviceInfo = d; break; }
+			 }
+		 } else {
+			 retuneDeviceIfNeeded(outDeviceInfo, s_lastWarnedRetuneOut, "output");
+		 }
+	 }
+#endif
+
 	 if (!inGone && !m_audioInput && !inDeviceInfo.isNull())
 	 {
 		 Debugprintf("Audio input device returned — reinitialising");
