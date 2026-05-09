@@ -71,7 +71,6 @@ private slots:
 	void doCalibrate();
 	void RefreshSpectrum(unsigned char * Data);
 	void doAbout();
-	void doRestartWF();
 	void doupdateDCD(int, int);
 	void sendtoTrace(char * Msg, int tx);
 	void preEmphAllAChanged(int);
@@ -118,7 +117,6 @@ private:
 	QAction *actMintoTray;
 	QAction *actCalib;
 	QAction *actAbout;
-	QAction *actRestartWF;
 	QAction *actWaterfall1;
 	QAction *actWaterfall2;
 
