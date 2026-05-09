@@ -4690,26 +4690,40 @@ void QtSoundModem::StartWatchdog()
 	 // on it. Re-apply the rate policy here before the reopen blocks
 	 // below call initializeAudio*. If we retuned during a live stream,
 	 // CoreAudio's HAL would interrupt the running graph and may SIGSEGV
-	 // in the listener-block path. Same dedup as QtSoundInit().
+	 // in the listener-block path.
 	 const bool inAboutToReopen =
 		 !inGone && !m_audioInput && !inDeviceInfo.isNull();
 	 const bool outAboutToReopen =
 		 !outGone && !m_audioOutput && !outDeviceInfo.isNull();
 
-	 if (inAboutToReopen)
-		 retuneDeviceIfNeeded(inDeviceInfo, s_lastWarnedRetuneIn, "input");
+	 const bool sameUid =
+		 !inDeviceInfo.isNull() && !outDeviceInfo.isNull() &&
+		 inDeviceInfo.id() == outDeviceInfo.id();
 
-	 if (outAboutToReopen) {
-		 if (inAboutToReopen &&
-		     outDeviceInfo.id() == inDeviceInfo.id()) {
+	 if (sameUid) {
+		 // RX and TX share one physical device. CoreAudio nominal-rate
+		 // changes are device-wide, so retuning would also disturb the
+		 // *other* direction. Only retune when both directions are
+		 // about to be reopened — i.e. neither side has a live stream
+		 // on this device.
+		 if (inAboutToReopen && outAboutToReopen) {
+			 retuneDeviceIfNeeded(inDeviceInfo, s_lastWarnedRetuneIn, "input");
 			 Debugprintf("RX and TX share a CoreAudio UID — output retune skipped.");
 			 const QList<QAudioDevice> fresh = QMediaDevices::audioOutputs();
 			 for (const QAudioDevice &d : fresh) {
 				 if (d.id() == outDeviceInfo.id()) { outDeviceInfo = d; break; }
 			 }
-		 } else {
-			 retuneDeviceIfNeeded(outDeviceInfo, s_lastWarnedRetuneOut, "output");
+		 } else if (inAboutToReopen || outAboutToReopen) {
+			 Debugprintf("Hot-plug retune skipped: RX and TX share a "
+				 "CoreAudio UID and only one direction is about to "
+				 "reopen — retuning would disturb the live stream "
+				 "on the other side.");
 		 }
+	 } else {
+		 if (inAboutToReopen)
+			 retuneDeviceIfNeeded(inDeviceInfo, s_lastWarnedRetuneIn, "input");
+		 if (outAboutToReopen)
+			 retuneDeviceIfNeeded(outDeviceInfo, s_lastWarnedRetuneOut, "output");
 	 }
 #endif
 
