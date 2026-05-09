@@ -217,37 +217,6 @@ if(APPLE)
         VERBATIM
     )
 
-    # Bundle offline help (qtsm-docs/site/) into Contents/Resources/help/.
-    # Authoritative reference for QtSoundModem behaviour is G8BPQ's page at
-    # cantab.net (see Help menu); qtsm-docs is secondary commentary, but it
-    # is what we ship offline. Path is overridable; if it is missing at
-    # configure time we emit a warning and skip the copy step — the binary
-    # still builds, but Help → User Guide and per-dialog ? buttons will be
-    # absent at runtime (helpUrlFor() returns an empty QUrl).
-    set(QTSM_DOCS_SITE "${CMAKE_SOURCE_DIR}/../../qtsm-docs/site"
-        CACHE PATH "Path to a built qtsm-docs site/ directory to bundle as offline help")
-    if(EXISTS "${QTSM_DOCS_SITE}/index.html")
-        message(STATUS "QtSoundModem: bundling offline help from ${QTSM_DOCS_SITE}")
-        # Pre-clean before copy_directory: cmake's copy_directory does not
-        # stale-prune, so a renamed/deleted page in qtsm-docs would otherwise
-        # linger inside the codesigned bundle until `make clean`.
-        add_custom_command(TARGET QtSoundModem POST_BUILD
-            COMMAND "${CMAKE_COMMAND}" -E rm -rf
-                    "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Resources/help"
-            COMMAND "${CMAKE_COMMAND}" -E copy_directory
-                    "${QTSM_DOCS_SITE}"
-                    "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Resources/help"
-            COMMENT "Refreshing qtsm-docs site in bundle Resources/help"
-            VERBATIM
-        )
-    else()
-        message(WARNING
-            "QtSoundModem: QTSM_DOCS_SITE='${QTSM_DOCS_SITE}' not found "
-            "(no index.html). Building without offline help — Help → User "
-            "Guide and per-dialog ? buttons will be inactive. Override "
-            "with -DQTSM_DOCS_SITE=/path/to/qtsm-docs/site to enable.")
-    endif()
-
     include("${CMAKE_SOURCE_DIR}/cmake/macdeployqt.cmake")
 else()
     add_executable(QtSoundModem

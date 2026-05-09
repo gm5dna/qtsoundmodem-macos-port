@@ -339,28 +339,6 @@
    <property name="toolTip">
     <string>Send a 10-second 1500 Hz tone — quick soundcard output-level check.</string>
    </property>
-   <property name="whatsThis">
-    <string>&lt;b&gt;10-second 1500 Hz tone&lt;/b&gt;&lt;br/&gt;Transmits a fixed 1500 Hz tone for 10 seconds via the CWID path. Useful for setting the soundcard output level once before doing the per-channel mark/space calibration above.</string>
-   </property>
-  </widget>
-  <widget class="QPushButton" name="helpButton">
-   <property name="geometry">
-    <rect>
-     <x>225</x>
-     <y>416</y>
-     <width>30</width>
-     <height>23</height>
-    </rect>
-   </property>
-   <property name="text">
-    <string>?</string>
-   </property>
-   <property name="toolTip">
-    <string>Open the calibration help page in the browser.</string>
-   </property>
-   <property name="whatsThis">
-    <string>&lt;b&gt;Help&lt;/b&gt;&lt;br/&gt;Opens the bundled calibration / busy-detect guide in the system browser. Disabled when QtSoundModem was built without the offline help bundle.</string>
-   </property>
   </widget>
  </widget>
  <resources/>

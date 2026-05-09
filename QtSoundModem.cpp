@@ -48,10 +48,9 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 #include <QScrollBar>
 #include <QFontDatabase>
 #include <QFile>
-#include <QFileInfo>
-#include <QDir>
 #include <QCoreApplication>
 #include <QDesktopServices>
+#include <QUrl>
 #include <QMutex>
 #include <QStyleHints>
 #include <QWhatsThis>
@@ -636,25 +635,6 @@ void DoPSKWindows()
 
 extern "C" struct timespec pttclk;
 
-// Locate a page in the bundled offline help. On macOS the help tree lives
-// in QtSoundModem.app/Contents/Resources/help/; CMake (QTSM_DOCS_SITE)
-// copies it from qtsm-docs/site/ at build time. Returns an empty QUrl
-// if the bundle was not built in (graceful degrade — see CMakeLists.txt).
-QUrl QtSoundModem::helpUrlFor(const QString &page)
-{
-#if defined(Q_OS_MACOS)
-	const QString base = QCoreApplication::applicationDirPath()
-		+ QStringLiteral("/../Resources/help/");
-#else
-	const QString base = QCoreApplication::applicationDirPath()
-		+ QStringLiteral("/help/");
-#endif
-	const QString full = QDir::cleanPath(base + page);
-	if (!QFileInfo::exists(full))
-		return QUrl();
-	return QUrl::fromLocalFile(full);
-}
-
 QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 {
 	QString family;
@@ -871,28 +851,8 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	// Help menu — sits rightmost; on macOS the system Help slot picks it
 	// up automatically when the menu is titled "Help".
 	QMenu *helpMenu = ui.menuBar->addMenu(tr("&Help"));
-	// QMenu does not show action tooltips by default — so the disabled
-	// "User Guide (offline)" entry below would be silent without this.
-	helpMenu->setToolTipsVisible(true);
 
-	// User Guide (offline): bundled qtsm-docs/site/index.html. If the
-	// bundle is missing (CMake QTSM_DOCS_SITE not pointing at a built
-	// site), helpUrlFor() returns an empty QUrl — disable the entry
-	// rather than offer a dead click.
-	QAction *actUserGuide = helpMenu->addAction(tr("&User Guide (offline)"));
-	actUserGuide->setMenuRole(QAction::NoRole);
-	const QUrl userGuideUrl = helpUrlFor(QStringLiteral("index.html"));
-	if (userGuideUrl.isEmpty()) {
-		actUserGuide->setEnabled(false);
-		actUserGuide->setToolTip(
-			tr("Offline help bundle not built — see CMake QTSM_DOCS_SITE"));
-	} else {
-		connect(actUserGuide, &QAction::triggered, this,
-			[userGuideUrl] { QDesktopServices::openUrl(userGuideUrl); });
-	}
-
-	// Authoritative reference is G8BPQ's cantab.net page — always available
-	// online, regardless of whether the offline bundle was built.
+	// G8BPQ's cantab.net page is the authoritative QtSoundModem reference.
 	QAction *actG8BPQOnline = helpMenu->addAction(
 		tr("&G8BPQ Documentation (online)"));
 	actG8BPQOnline->setMenuRole(QAction::NoRole);
@@ -1696,19 +1656,6 @@ void QtSoundModem::doModems()
 
 	Dlg->setupUi(&UI);
 
-	// Help button — open the bundled per-channel modem guide.
-	{
-		const QUrl helpUrl = helpUrlFor(QStringLiteral("config/per-channel/index.html"));
-		if (helpUrl.isEmpty()) {
-			Dlg->helpButton->setEnabled(false);
-			Dlg->helpButton->setToolTip(
-				tr("Offline help not bundled with this build — try Help → G8BPQ Documentation instead."));
-		} else {
-			connect(Dlg->helpButton, &QPushButton::released, this,
-				[helpUrl] { QDesktopServices::openUrl(helpUrl); });
-		}
-	}
-
 	modemUI = &UI;
 	deviceUI = 0;
 
@@ -2425,20 +2372,6 @@ void QtSoundModem::doDevices()
 	int i;
 
 	Dev->setupUi(&UI);
-
-	// Help button — open the bundled config / GUI guide. Disable when
-	// the offline help bundle was not built into the .app.
-	{
-		const QUrl helpUrl = helpUrlFor(QStringLiteral("config/gui/index.html"));
-		if (helpUrl.isEmpty()) {
-			Dev->helpButton->setEnabled(false);
-			Dev->helpButton->setToolTip(
-				tr("Offline help not bundled with this build — try Help → G8BPQ Documentation instead."));
-		} else {
-			connect(Dev->helpButton, &QPushButton::released, this,
-				[helpUrl] { QDesktopServices::openUrl(helpUrl); });
-		}
-	}
 
 	deviceUI = &UI;
 	modemUI = 0;
@@ -3214,19 +3147,6 @@ void QtSoundModem::doCalibrate()
 		connect(Calibrate.Both_D, SIGNAL(released()), this, SLOT(clickedSlot()));
 		connect(Calibrate.Stop_D, SIGNAL(released()), this, SLOT(clickedSlot()));
 		connect(Calibrate.Cal1500, SIGNAL(released()), this, SLOT(clickedSlot()));
-
-		// Help button — open the bundled calibration guide. Disable if the
-		// offline help bundle was not built into the .app (helpUrlFor()
-		// returns empty when QTSM_DOCS_SITE was missing at configure time).
-		const QUrl helpUrl = helpUrlFor(QStringLiteral("audio/calibrate-busy/index.html"));
-		if (helpUrl.isEmpty()) {
-			Calibrate.helpButton->setEnabled(false);
-			Calibrate.helpButton->setToolTip(
-				tr("Offline help not bundled with this build — try Help → G8BPQ Documentation instead."));
-		} else {
-			connect(Calibrate.helpButton, &QPushButton::released, this,
-				[helpUrl] { QDesktopServices::openUrl(helpUrl); });
-		}
 
 		/*
 		
