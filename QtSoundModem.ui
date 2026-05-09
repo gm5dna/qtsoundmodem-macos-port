@@ -39,6 +39,12 @@
     <property name="value">
      <number>1500</number>
     </property>
+    <property name="toolTip">
+     <string>Centre audio frequency (Hz) for channel A. Standard VHF packet uses 1700 (between Bell-202 1200/2200 Hz tones).</string>
+    </property>
+    <property name="whatsThis">
+     <string>&lt;b&gt;Channel A centre frequency (Hz)&lt;/b&gt;&lt;br/&gt;The audio centre of the demodulator passband. Standard VHF packet practice is &lt;tt&gt;1700&lt;/tt&gt; Hz, sitting symmetrically between the Bell-202 mark (1200 Hz) and space (2200 Hz) tones. HF and other modes may pick different centres. Range 0–3000 Hz; default 1700.&lt;br/&gt;Stored as &lt;tt&gt;Modem/RXFreq1&lt;/tt&gt;.</string>
+    </property>
    </widget>
    <widget class="QComboBox" name="modeB">
     <property name="geometry">
@@ -48,6 +54,12 @@
       <width>145</width>
       <height>22</height>
      </rect>
+    </property>
+    <property name="toolTip">
+     <string>Modem mode for channel B — selects the modulator/demodulator (AFSK 1200, G3RUH 9600, BPSK 300, etc.).</string>
+    </property>
+    <property name="whatsThis">
+     <string>&lt;b&gt;Channel B modem mode&lt;/b&gt;&lt;br/&gt;Sets the modulator and demodulator used on this channel. Match it to the on-air signal — common choices are AFSK 1200 for VHF packet, G3RUH 9600 for 9600-baud packet, BPSK 300 for HF packet, and V.26/V.27 for higher-rate HF. Open the dropdown for the full list, or see Help → User Guide for descriptions of each. IL2P framing is configured separately in Setup Modems.&lt;br/&gt;Stored as &lt;tt&gt;Modem/ModemType2&lt;/tt&gt;.</string>
     </property>
    </widget>
    <widget class="QLabel" name="label_2">
@@ -77,6 +89,12 @@
     </property>
     <property name="value">
      <number>1500</number>
+    </property>
+    <property name="toolTip">
+     <string>Centre audio frequency (Hz) for channel B. Standard VHF packet uses 1700 (between Bell-202 1200/2200 Hz tones).</string>
+    </property>
+    <property name="whatsThis">
+     <string>&lt;b&gt;Channel B centre frequency (Hz)&lt;/b&gt;&lt;br/&gt;The audio centre of the demodulator passband. Standard VHF packet practice is &lt;tt&gt;1700&lt;/tt&gt; Hz, sitting symmetrically between the Bell-202 mark (1200 Hz) and space (2200 Hz) tones. HF and other modes may pick different centres. Range 0–3000 Hz; default 1700.&lt;br/&gt;Stored as &lt;tt&gt;Modem/RXFreq2&lt;/tt&gt;.</string>
     </property>
    </widget>
    <widget class="QLabel" name="Waterfall">
@@ -114,6 +132,12 @@
     <property name="text">
      <string>Waterfall</string>
     </property>
+    <property name="toolTip">
+     <string>Waterfall: scrolling spectrogram of the receive audio (frequency on the X axis, time scrolling down).</string>
+    </property>
+    <property name="whatsThis">
+     <string>&lt;b&gt;Waterfall display&lt;/b&gt;&lt;br/&gt;Live spectrogram of the audio being demodulated — frequency runs left-to-right, time scrolls top-to-bottom, and brightness shows signal energy. Coloured tick marks above the waterfall indicate each modem's mark/space and centre-frequency window. Use it to see whether incoming signals fall inside the modem passbands and to spot QRM. Visibility toggled from View → First/Second Waterfall; frequency range bounded by the Waterfall Min/Max settings in Settings → Setup Devices.</string>
+    </property>
    </widget>
    <widget class="QComboBox" name="modeA">
     <property name="geometry">
@@ -123,6 +147,12 @@
       <width>145</width>
       <height>22</height>
      </rect>
+    </property>
+    <property name="toolTip">
+     <string>Modem mode for channel A — selects the modulator/demodulator (AFSK 1200, G3RUH 9600, BPSK 300, etc.).</string>
+    </property>
+    <property name="whatsThis">
+     <string>&lt;b&gt;Channel A modem mode&lt;/b&gt;&lt;br/&gt;Sets the modulator and demodulator used on this channel. Match it to the on-air signal — common choices are AFSK 1200 for VHF packet, G3RUH 9600 for 9600-baud packet, BPSK 300 for HF packet, and V.26/V.27 for higher-rate HF. Open the dropdown for the full list, or see Help → User Guide for descriptions of each. IL2P framing is configured separately in Setup Modems.&lt;br/&gt;Stored as &lt;tt&gt;Modem/ModemType1&lt;/tt&gt;.</string>
     </property>
    </widget>
    <widget class="QLabel" name="label">
@@ -139,6 +169,9 @@
     </property>
     <property name="alignment">
      <set>Qt::AlignCenter</set>
+    </property>
+    <property name="toolTip">
+     <string>Threshold for the busy-channel detector — see the slider directly below.</string>
     </property>
    </widget>
    <widget class="QLabel" name="labelB">
@@ -172,6 +205,12 @@
     <property name="tickInterval">
      <number>10</number>
     </property>
+    <property name="toolTip">
+     <string>DCD threshold — sensitivity of the busy-channel detector (the red squares above each modem).</string>
+    </property>
+    <property name="whatsThis">
+     <string>&lt;b&gt;DCD threshold (Data Carrier Detect)&lt;/b&gt;&lt;br/&gt;Controls the sensitivity of the BusyDetect3 algorithm that lights the per-channel DCD squares red when a signal is present. Lower values trigger DCD on weaker signals (more false alarms); higher values require a stronger signal (may miss weak stations). Applied globally across all four channels. The response is non-linear — small changes near the bottom of the slider have far more effect than near the top.&lt;br/&gt;Stored as &lt;tt&gt;Modem/DCDThreshold&lt;/tt&gt;.</string>
+    </property>
    </widget>
    <widget class="QTextEdit" name="monWindow">
     <property name="geometry">
@@ -184,6 +223,12 @@
     </property>
     <property name="readOnly">
      <bool>true</bool>
+    </property>
+    <property name="toolTip">
+     <string>Monitor: shows AX.25 frames received and transmitted as the modem decodes them.</string>
+    </property>
+    <property name="whatsThis">
+     <string>&lt;b&gt;Monitor pane&lt;/b&gt;&lt;br/&gt;Live log of every AX.25 frame the modem decodes (RX) or sends (TX), with callsigns, paths, control field, and payload. Useful for confirming the modem is locking onto signals correctly and for sanity-checking outgoing traffic. Read-only; copy lines with the standard text-selection shortcuts.</string>
     </property>
    </widget>
    <widget class="QLabel" name="labelC">
@@ -208,6 +253,12 @@
       <height>22</height>
      </rect>
     </property>
+    <property name="toolTip">
+     <string>Modem mode for channel C — selects the modulator/demodulator (AFSK 1200, G3RUH 9600, BPSK 300, etc.).</string>
+    </property>
+    <property name="whatsThis">
+     <string>&lt;b&gt;Channel C modem mode&lt;/b&gt;&lt;br/&gt;Sets the modulator and demodulator used on this channel. Match it to the on-air signal — common choices are AFSK 1200 for VHF packet, G3RUH 9600 for 9600-baud packet, BPSK 300 for HF packet, and V.26/V.27 for higher-rate HF. Open the dropdown for the full list, or see Help → User Guide for descriptions of each. IL2P framing is configured separately in Setup Modems.&lt;br/&gt;Stored as &lt;tt&gt;Modem/ModemType3&lt;/tt&gt;.</string>
+    </property>
    </widget>
    <widget class="QSpinBox" name="centerD">
     <property name="geometry">
@@ -224,6 +275,12 @@
     <property name="value">
      <number>1500</number>
     </property>
+    <property name="toolTip">
+     <string>Centre audio frequency (Hz) for channel D. Standard VHF packet uses 1700 (between Bell-202 1200/2200 Hz tones).</string>
+    </property>
+    <property name="whatsThis">
+     <string>&lt;b&gt;Channel D centre frequency (Hz)&lt;/b&gt;&lt;br/&gt;The audio centre of the demodulator passband. Standard VHF packet practice is &lt;tt&gt;1700&lt;/tt&gt; Hz, sitting symmetrically between the Bell-202 mark (1200 Hz) and space (2200 Hz) tones. HF and other modes may pick different centres. Range 0–3000 Hz; default 1700.&lt;br/&gt;Stored as &lt;tt&gt;Modem/RXFreq4&lt;/tt&gt;.</string>
+    </property>
    </widget>
    <widget class="QComboBox" name="modeD">
     <property name="geometry">
@@ -233,6 +290,12 @@
       <width>145</width>
       <height>22</height>
      </rect>
+    </property>
+    <property name="toolTip">
+     <string>Modem mode for channel D — selects the modulator/demodulator (AFSK 1200, G3RUH 9600, BPSK 300, etc.).</string>
+    </property>
+    <property name="whatsThis">
+     <string>&lt;b&gt;Channel D modem mode&lt;/b&gt;&lt;br/&gt;Sets the modulator and demodulator used on this channel. Match it to the on-air signal — common choices are AFSK 1200 for VHF packet, G3RUH 9600 for 9600-baud packet, BPSK 300 for HF packet, and V.26/V.27 for higher-rate HF. Open the dropdown for the full list, or see Help → User Guide for descriptions of each. IL2P framing is configured separately in Setup Modems.&lt;br/&gt;Stored as &lt;tt&gt;Modem/ModemType4&lt;/tt&gt;.</string>
     </property>
    </widget>
    <widget class="QLabel" name="labelD">
@@ -262,6 +325,12 @@
     </property>
     <property name="value">
      <number>1500</number>
+    </property>
+    <property name="toolTip">
+     <string>Centre audio frequency (Hz) for channel C. Standard VHF packet uses 1700 (between Bell-202 1200/2200 Hz tones).</string>
+    </property>
+    <property name="whatsThis">
+     <string>&lt;b&gt;Channel C centre frequency (Hz)&lt;/b&gt;&lt;br/&gt;The audio centre of the demodulator passband. Standard VHF packet practice is &lt;tt&gt;1700&lt;/tt&gt; Hz, sitting symmetrically between the Bell-202 mark (1200 Hz) and space (2200 Hz) tones. HF and other modes may pick different centres. Range 0–3000 Hz; default 1700.&lt;br/&gt;Stored as &lt;tt&gt;Modem/RXFreq3&lt;/tt&gt;.</string>
     </property>
    </widget>
    <widget class="QLabel" name="RXOffsetLabel">
@@ -307,6 +376,9 @@
     <property name="toolTip">
      <string>Global RX offset (Hz, ±200) — manually shift all four channels' tuning by the same amount.</string>
     </property>
+    <property name="whatsThis">
+     <string>&lt;b&gt;Global RX offset (Hz)&lt;/b&gt;&lt;br/&gt;Adds a manual offset, applied to every channel, to the receive frequency. Use this to compensate for an off-frequency radio or a known band shift without touching each channel's centre. Range −200 to +200 Hz; default 0. Unlike the per-channel RX offset fields, this spin box is purely manual — the modem never moves it on its own.&lt;br/&gt;Stored as &lt;tt&gt;Modem/rxOffset&lt;/tt&gt;.</string>
+    </property>
    </widget>
    <widget class="QLineEdit" name="RXOffsetA">
     <property name="geometry">
@@ -322,6 +394,12 @@
     </property>
     <property name="alignment">
      <set>Qt::AlignCenter</set>
+    </property>
+    <property name="toolTip">
+     <string>Channel A RX tracking offset (Hz). Auto-updates as the modem locks; type a value and press Enter to nudge it.</string>
+    </property>
+    <property name="whatsThis">
+     <string>&lt;b&gt;Channel A RX offset (Hz)&lt;/b&gt;&lt;br/&gt;Live offset of the received signal from this channel's centre frequency. The modem updates the value continuously as it tracks the carrier. You can also type a number and press Enter to seed the tracker — useful for pulling in a signal whose centre you already know.</string>
     </property>
    </widget>
    <widget class="QLineEdit" name="RXOffsetB">
@@ -339,6 +417,12 @@
     <property name="alignment">
      <set>Qt::AlignCenter</set>
     </property>
+    <property name="toolTip">
+     <string>Channel B RX tracking offset (Hz). Auto-updates as the modem locks; type a value and press Enter to nudge it.</string>
+    </property>
+    <property name="whatsThis">
+     <string>&lt;b&gt;Channel B RX offset (Hz)&lt;/b&gt;&lt;br/&gt;Live offset of the received signal from this channel's centre frequency. The modem updates the value continuously as it tracks the carrier. You can also type a number and press Enter to seed the tracker — useful for pulling in a signal whose centre you already know.</string>
+    </property>
    </widget>
    <widget class="QLineEdit" name="RXOffsetC">
     <property name="geometry">
@@ -355,6 +439,12 @@
     <property name="alignment">
      <set>Qt::AlignCenter</set>
     </property>
+    <property name="toolTip">
+     <string>Channel C RX tracking offset (Hz). Auto-updates as the modem locks; type a value and press Enter to nudge it.</string>
+    </property>
+    <property name="whatsThis">
+     <string>&lt;b&gt;Channel C RX offset (Hz)&lt;/b&gt;&lt;br/&gt;Live offset of the received signal from this channel's centre frequency. The modem updates the value continuously as it tracks the carrier. You can also type a number and press Enter to seed the tracker — useful for pulling in a signal whose centre you already know.</string>
+    </property>
    </widget>
    <widget class="QLineEdit" name="RXOffsetD">
     <property name="geometry">
@@ -370,6 +460,12 @@
     </property>
     <property name="alignment">
      <set>Qt::AlignCenter</set>
+    </property>
+    <property name="toolTip">
+     <string>Channel D RX tracking offset (Hz). Auto-updates as the modem locks; type a value and press Enter to nudge it.</string>
+    </property>
+    <property name="whatsThis">
+     <string>&lt;b&gt;Channel D RX offset (Hz)&lt;/b&gt;&lt;br/&gt;Live offset of the received signal from this channel's centre frequency. The modem updates the value continuously as it tracks the carrier. You can also type a number and press Enter to seed the tracker — useful for pulling in a signal whose centre you already know.</string>
     </property>
    </widget>
    <widget class="QLabel" name="RXLevel">
@@ -389,6 +485,12 @@
     </property>
     <property name="text">
      <string/>
+    </property>
+    <property name="toolTip">
+     <string>Receive level meter — left channel of the sound card. Aim for the green band; yellow means too low to demodulate reliably; red means clipping.</string>
+    </property>
+    <property name="whatsThis">
+     <string>&lt;b&gt;RX level meter (left channel)&lt;/b&gt;&lt;br/&gt;Shows the audio amplitude arriving from the sound card's left input. Adjust the sound card recording level (or the &quot;RX Audio&quot; slider) so the bar stays in the green region. Yellow means the level is too low to demodulate reliably (a common macOS default); red indicates clipping that will distort the signal and break demodulation.</string>
     </property>
    </widget>
    <widget class="QLabel" name="label_7">
@@ -414,6 +516,9 @@
     <property name="wordWrap">
      <bool>true</bool>
     </property>
+    <property name="toolTip">
+     <string>Receive level meters — left and right channels of the sound card input.</string>
+    </property>
    </widget>
    <widget class="QLabel" name="RXLevel2">
     <property name="geometry">
@@ -433,6 +538,12 @@
     <property name="text">
      <string/>
     </property>
+    <property name="toolTip">
+     <string>Receive level meter — right channel of the sound card. Aim for the green band; yellow means too low to demodulate reliably; red means clipping.</string>
+    </property>
+    <property name="whatsThis">
+     <string>&lt;b&gt;RX level meter (right channel)&lt;/b&gt;&lt;br/&gt;Shows the audio amplitude arriving from the sound card's right input. Adjust the sound card recording level (or the &quot;RX Audio&quot; slider) so the bar stays in the green region. Yellow means the level is too low to demodulate reliably; red indicates clipping that will distort the signal and break demodulation. Note: the modem requires a stereo input even when only one channel carries audio.</string>
+    </property>
    </widget>
    <widget class="QLabel" name="TXAudioLabel">
     <property name="geometry">
@@ -445,6 +556,9 @@
     </property>
     <property name="text">
      <string>TX Audio 100%</string>
+    </property>
+    <property name="toolTip">
+     <string>Current value of the TX audio level slider.</string>
     </property>
    </widget>
    <widget class="QSlider" name="TXAudio">
@@ -474,6 +588,12 @@
     <property name="tickInterval">
      <number>10</number>
     </property>
+    <property name="toolTip">
+     <string>TX audio level (0–100%) — output volume sent to the radio's mic input.</string>
+    </property>
+    <property name="whatsThis">
+     <string>&lt;b&gt;TX audio level&lt;/b&gt;&lt;br/&gt;Software gain applied to the modulator output before it reaches the sound card. Use this to set the audio level sent to the rig's mic/data input without touching the system audio mixer. 100% passes the modulator output unchanged; lower values attenuate. The rig's own mic-gain or data-input level still controls the resulting on-air deviation; this slider trims the QtSoundModem-side level cleanly. Default 100.&lt;br/&gt;macOS-port addition; stored as &lt;tt&gt;Modem/TXAudioLevel&lt;/tt&gt;.</string>
+    </property>
    </widget>
    <widget class="QLabel" name="RXAudioLabel">
     <property name="geometry">
@@ -486,6 +606,9 @@
     </property>
     <property name="text">
      <string>RX Audio 100%</string>
+    </property>
+    <property name="toolTip">
+     <string>Current value of the RX audio level slider.</string>
     </property>
    </widget>
    <widget class="QSlider" name="RXAudio">
@@ -514,6 +637,12 @@
     </property>
     <property name="tickInterval">
      <number>10</number>
+    </property>
+    <property name="toolTip">
+     <string>RX audio level (0–100%) — input gain applied to the radio's audio output.</string>
+    </property>
+    <property name="whatsThis">
+     <string>&lt;b&gt;RX audio level&lt;/b&gt;&lt;br/&gt;Software gain applied to the sound card input before demodulation. Use this when the system audio mixer is fixed at 100% and you need to bring the receive level into the green band on the meter. 100% passes the audio unchanged; lower values attenuate. Default 100.&lt;br/&gt;macOS-port addition; stored as &lt;tt&gt;Modem/RXAudioLevel&lt;/tt&gt;.</string>
     </property>
    </widget>
   </widget>
