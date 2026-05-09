@@ -4516,6 +4516,28 @@ void QtSoundModem::StartWatchdog()
 
 	 GetAudioDevices();
 
+#if defined(Q_OS_MACOS)
+	 // Programmatically set the device's nominal CoreAudio rate to
+	 // a 12-kHz multiple BEFORE initializeAudio* opens it. Avoids
+	 // the HAL's built-in resampler — its jitter on 44.1 kHz
+	 // hardware is enough to break AFSK bit-recovery. Same physical
+	 // device for RX and TX is common with single-USB radio
+	 // interfaces; retune once in that case.
+	 retuneDeviceIfNeeded(inDeviceInfo, s_lastWarnedRetuneIn, "input");
+
+	 if (!outDeviceInfo.isNull() &&
+	     !inDeviceInfo.isNull() &&
+	     outDeviceInfo.id() == inDeviceInfo.id()) {
+		 Debugprintf("RX and TX share a CoreAudio UID — output retune skipped.");
+		 const QList<QAudioDevice> fresh = QMediaDevices::audioOutputs();
+		 for (const QAudioDevice &d : fresh) {
+			 if (d.id() == outDeviceInfo.id()) { outDeviceInfo = d; break; }
+		 }
+	 } else {
+		 retuneDeviceIfNeeded(outDeviceInfo, s_lastWarnedRetuneOut, "output");
+	 }
+#endif
+
 	 initializeAudioOut(outDeviceInfo);
 	 initializeAudioIn(inDeviceInfo);
 
