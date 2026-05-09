@@ -163,6 +163,13 @@ static int setRateAndWait(AudioDeviceID dev, Float64 desired,
 
     if (addSt == noErr)
         AudioObjectRemovePropertyListenerBlock(dev, &a, q, listener);
+
+    // This .mm builds without ARC (matching MacPermissions.mm); the
+    // dispatch_semaphore_create reference must be released here or
+    // every retune attempt leaks one semaphore. Under modern macOS
+    // OS_OBJECT_USE_OBJC_RETAIN_RELEASE may stub dispatch_release
+    // to a no-op, in which case this is harmless.
+    dispatch_release(sem);
     return rc;
 }
 
