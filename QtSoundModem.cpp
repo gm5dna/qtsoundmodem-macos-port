@@ -2631,6 +2631,18 @@ enum {
 };
 static QByteArray s_lastWarnedRetuneIn;
 static QByteArray s_lastWarnedRetuneOut;
+// Re-entry guard. retuneDeviceIfNeeded calls QCoreApplication::
+// processEvents(50ms) so Qt's CoreAudio backend can update its
+// cached AudioDeviceFormat after the HAL nominal-rate change.
+// Pumping the event loop also delivers any queued
+// audioInputsChanged / audioOutputsChanged signals, which would
+// re-enter onAudioDevicesChanged and (if our streams are null)
+// auto-reopen them while deviceaccept / QtSoundInit are still
+// mid-flight — leading to a duplicate initializeAudio* open.
+// Bumping this counter for the duration of a retune lets the
+// slot bail out cleanly; the next legitimate device-list event
+// after the retune finishes will deliver an up-to-date snapshot.
+static int s_retuneInProgress = 0;
 #endif
 
 void QtSoundModem::deviceaccept()
@@ -4428,6 +4440,11 @@ void QtSoundModem::StartWatchdog()
      const QByteArray uid = deviceInfo.id();
      if (uid.isEmpty()) return;
 
+     // Re-entry guard — see s_retuneInProgress declaration. RAII so
+     // an early return / exception in the body still decrements.
+     ++s_retuneInProgress;
+     struct RetuneGuard { int *p; ~RetuneGuard(){ --*p; } } guard{&s_retuneInProgress};
+
      char errBuf[256] = {0};
      double chosenRate = 0.0;
      int rc = macSetDeviceNominalSampleRate(
@@ -4607,6 +4624,22 @@ void QtSoundModem::StartWatchdog()
 
  void QtSoundModem::onAudioDevicesChanged()
  {
+#if defined(Q_OS_MACOS)
+	 // A retune in progress is pumping the event loop to let Qt's
+	 // CoreAudio backend refresh its cached device formats. Any
+	 // queued device-list signal that lands on us during that
+	 // window would see m_audioInput/m_audioOutput == nullptr (in
+	 // the deviceaccept path the caller has already torn them down)
+	 // and hit the auto-reopen branches below, opening streams the
+	 // caller is about to open itself — duplicate CoreAudio open.
+	 // Skip; the next legitimate device-list event after the retune
+	 // unwinds will deliver an up-to-date snapshot.
+	 if (s_retuneInProgress) {
+		 Debugprintf("onAudioDevicesChanged ignored — retune in progress.");
+		 return;
+	 }
+#endif
+
 	 // Re-enumerate. Qt 6 does not always emit StoppedState cleanly
 	 // when the underlying device vanishes — depending on the macOS
 	 // backend the QAudioSource can hang in ActiveState producing
