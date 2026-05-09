@@ -807,6 +807,7 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	// Set up Menus
 
 	setupMenu = ui.menuBar->addMenu(tr("Settings"));
+	setupMenu->setToolTipsVisible(true);
 
 	actDevices = new QAction("Setup Devices", this);
 	// Qt's macOS heuristic auto-moves QActions whose title contains
@@ -816,6 +817,8 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	// them under the Settings menu where the code added them.
 	// Force NoRole on every action that would otherwise be stolen.
 	actDevices->setMenuRole(QAction::NoRole);
+	actDevices->setToolTip(tr("Open the Setup Devices dialog: sound card, audio backend, modem channel routing, server ports, PTT method."));
+	actDevices->setWhatsThis(tr("<b>Setup Devices</b><br/>Configures the sound card (RX/TX device), audio backend, modem-to-channel routing, AGW/KISS/UDP/RHP/6Pack/MGMT server ports, and the PTT method (RTS, DTR, CAT, GPIO, CM108, Hamlib, FLRig). Save persists changes; the audio backend and server ports take effect on next start, while PTT changes apply immediately."));
 	setupMenu->addAction(actDevices);
 
 	connect(actDevices, SIGNAL(triggered()), this, SLOT(clickedSlot()));
@@ -823,6 +826,8 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	actModems = new QAction("Setup Modems", this);
 	actModems->setMenuRole(QAction::NoRole);
 	actModems->setObjectName("actModems");
+	actModems->setToolTip(tr("Open the Setup Modems dialog: per-channel TX timing, FX.25, IL2P, RSID, AX.25 parameters, filters."));
+	actModems->setWhatsThis(tr("<b>Setup Modems</b><br/>Per-channel modem configuration spread across four tabs (A/B/C/D). Controls TX delay/tail, FX.25 and IL2P framing, RSID transmission, AX.25 timers (FRACK, MaxFrame, Retries), digipeater calls, filter widths, and CWID."));
 	setupMenu->addAction(actModems);
 
 	connect(actModems, SIGNAL(triggered()), this, SLOT(clickedSlot()));
@@ -835,21 +840,32 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	actMintoTray = setupMenu->addAction("Minimize to Tray", this, SLOT(MinimizetoTray()));
 	actMintoTray->setCheckable(1);
 	actMintoTray->setChecked(MintoTray);
+	actMintoTray->setToolTip(tr("Send the window to the system tray instead of the dock when minimised."));
 #endif
 
 	viewMenu = ui.menuBar->addMenu(tr("&View"));
+	viewMenu->setToolTipsVisible(true);
 
 	actWaterfall1 = setupMenuLine(viewMenu, (char *)"First waterfall", this, Firstwaterfall);
 	actWaterfall2 = setupMenuLine(viewMenu, (char *)"Second Waterfall", this, Secondwaterfall);
 	actConstellation = setupMenuLine(viewMenu, (char *)"PSK Constellation", this, PSKWindow);
+	// setupMenuLine always returns a fresh QAction (new throws on failure);
+	// no null guard needed.
+	actWaterfall1->setToolTip(tr("Show or hide the upper waterfall pane."));
+	actWaterfall1->setWhatsThis(tr("<b>First waterfall</b><br/>Toggles the upper of the two waterfall displays. Stored as <tt>Window/Waterfall1</tt>."));
+	actWaterfall2->setToolTip(tr("Show or hide the lower waterfall pane."));
+	actWaterfall2->setWhatsThis(tr("<b>Second Waterfall</b><br/>Toggles the lower waterfall display. Stored as <tt>Window/Waterfall2</tt>."));
 
 	// macOS QMenuBar only renders QMenu submenus at the top level —
 	// QActions added directly via addAction() are silently dropped.
 	// Group action-style entries under a real submenu so they appear.
 	QMenu *toolsMenu = ui.menuBar->addMenu(tr("&Tools"));
+	toolsMenu->setToolTipsVisible(true);
 
 	actCalib = toolsMenu->addAction("&Calibration");
 	actCalib->setMenuRole(QAction::NoRole);
+	actCalib->setToolTip(tr("Open the Calibration dialog: per-channel mark/space tones for receiver alignment and TX level setup."));
+	actCalib->setWhatsThis(tr("<b>Calibration</b><br/>Opens a dialog with per-channel Low/High/Both/Stop buttons and a 10-second 1500 Hz tone — for setting transmit deviation and verifying receiver alignment."));
 	connect(actCalib, SIGNAL(triggered()), this, SLOT(doCalibrate()));
 
 	// Help menu — sits rightmost; on macOS the system Help slot picks it
