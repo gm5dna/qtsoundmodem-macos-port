@@ -511,8 +511,8 @@ void QtSoundModem::resizeEvent(QResizeEvent* event)
 	// width. Order left → right: RX Offset, DCD Level, TX Audio, RX Audio,
 	// Rcv Level (meter at the far right). Design base 1200 — clamp at zero.
 	int rightDelta = Width > 1200 ? Width - 1200 : 0;
-	ui.RXOffsetLabel->setGeometry(600 + rightDelta, 2, 87, 13);
-	ui.RXOffset->setGeometry(600 + rightDelta, 18, 63, 14);
+	ui.RXOffsetLabel->setGeometry(600 + rightDelta, 2, 80, 13);
+	ui.RXOffset->setGeometry(600 + rightDelta, 15, 80, 20);
 	ui.label->setGeometry(690 + rightDelta, 2, 73, 13);
 	ui.DCDSlider->setGeometry(690 + rightDelta, 18, 73, 14);
 	ui.TXAudioLabel->setGeometry(780 + rightDelta, 2, 100, 13);
@@ -595,11 +595,6 @@ QRect PSKRect = { 100,100,100,100 };
 
 QLabel * constellationLabel[4];
 QLabel * QualLabel[4];
-
-// Local copies
-
-QLabel *RXOffsetLabel;
-QSlider *RXOffset;
 
 QFont Font;
 
@@ -945,12 +940,7 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	ui.DCDSlider->setValue(dcd_threshold);
 
 	char valChar[32];
-	sprintf(valChar, "RX Offset %d", rxOffset);
-	ui.RXOffsetLabel->setText(valChar);
 	ui.RXOffset->setValue(rxOffset);
-
-	RXOffsetLabel = ui.RXOffsetLabel;
-	RXOffset = ui.RXOffset;
 
 	connect(ui.DCDSlider, SIGNAL(sliderMoved(int)), this, SLOT(clickedSlotI(int)));
 	connect(ui.RXOffset, SIGNAL(valueChanged(int)), this, SLOT(clickedSlotI(int)));
@@ -1397,10 +1387,7 @@ void QtSoundModem::clickedSlotI(int i)
 	
 	if (strcmp(Name, "RXOffset") == 0)
 	{
-		char valChar[32];
 		rxOffset = i;
-		sprintf(valChar, "RX Offset %d",rxOffset);
-		ui.RXOffsetLabel->setText(valChar);
 
 		NeedWaterfallHeaders = true;
 

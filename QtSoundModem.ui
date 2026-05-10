@@ -264,14 +264,36 @@
      <number>1500</number>
     </property>
    </widget>
-   <widget class="QSlider" name="RXOffset">
+   <widget class="QLabel" name="RXOffsetLabel">
     <property name="geometry">
      <rect>
       <x>600</x>
-      <y>18</y>
-      <width>63</width>
-      <height>14</height>
+      <y>2</y>
+      <width>80</width>
+      <height>13</height>
      </rect>
+    </property>
+    <property name="text">
+     <string>RX Offset</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignCenter</set>
+    </property>
+   </widget>
+   <widget class="QSpinBox" name="RXOffset">
+    <property name="geometry">
+     <rect>
+      <x>600</x>
+      <y>15</y>
+      <width>80</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+    </property>
+    <property name="suffix">
+     <string> Hz</string>
     </property>
     <property name="minimum">
      <number>-200</number>
@@ -282,27 +304,8 @@
     <property name="value">
      <number>0</number>
     </property>
-    <property name="orientation">
-     <enum>Qt::Horizontal</enum>
-    </property>
-    <property name="tickPosition">
-     <enum>QSlider::NoTicks</enum>
-    </property>
-    <property name="tickInterval">
-     <number>10</number>
-    </property>
-   </widget>
-   <widget class="QLabel" name="RXOffsetLabel">
-    <property name="geometry">
-     <rect>
-      <x>600</x>
-      <y>2</y>
-      <width>87</width>
-      <height>13</height>
-     </rect>
-    </property>
-    <property name="text">
-     <string>RX Offset 0</string>
+    <property name="toolTip">
+     <string>Global RX offset (Hz, ±200) — manually shift all four channels' tuning by the same amount.</string>
     </property>
    </widget>
    <widget class="QLineEdit" name="RXOffsetA">
