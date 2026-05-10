@@ -59,6 +59,11 @@ add_custom_command(TARGET QtSoundModem POST_BUILD
 get_filename_component(FFTW3F_REAL "${FFTW3F_LIBRARY}" REALPATH)
 get_filename_component(FFTW3F_NAME "${FFTW3F_REAL}" NAME)
 
+# Use @executable_path/../Frameworks/<name> directly in the install_name
+# instead of @rpath/<name>. This matches how macdeployqt rewrites the
+# Qt framework load commands, removes any dependency on LC_RPATH order,
+# and guarantees the bundle loads its own libfftw3f / libhidapi even on
+# a recipient machine that has Homebrew copies installed.
 add_custom_command(TARGET QtSoundModem POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E make_directory
             "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Frameworks"
@@ -68,7 +73,7 @@ add_custom_command(TARGET QtSoundModem POST_BUILD
     COMMAND chmod u+w
             "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Frameworks/${FFTW3F_NAME}"
     COMMAND install_name_tool -id
-            "@rpath/${FFTW3F_NAME}"
+            "@executable_path/../Frameworks/${FFTW3F_NAME}"
             "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Frameworks/${FFTW3F_NAME}"
     # Do not sign here: install_name_tool changes are not complete until
     # every embedded dependency and executable load command has been
@@ -77,7 +82,7 @@ add_custom_command(TARGET QtSoundModem POST_BUILD
     COMMAND /bin/bash -c
             "exe='$<TARGET_FILE:QtSoundModem>'; \
              for dep in $(otool -L \"$exe\" | awk 'NR>1 {print $1}' | grep '/libfftw3f'); do \
-                 install_name_tool -change \"$dep\" '@rpath/${FFTW3F_NAME}' \"$exe\"; \
+                 install_name_tool -change \"$dep\" '@executable_path/../Frameworks/${FFTW3F_NAME}' \"$exe\"; \
              done"
     COMMENT "Embedding ${FFTW3F_NAME} into QtSoundModem.app/Contents/Frameworks"
     VERBATIM
@@ -105,14 +110,14 @@ if(HIDAPI_LIBRARY)
         COMMAND chmod u+w
                 "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Frameworks/${HIDAPI_NAME}"
         COMMAND install_name_tool -id
-                "@rpath/${HIDAPI_NAME}"
+                "@executable_path/../Frameworks/${HIDAPI_NAME}"
                 "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Frameworks/${HIDAPI_NAME}"
         # Signing is centralized in the final post-build step after all
         # install_name_tool edits have completed.
         COMMAND /bin/bash -c
                 "exe='$<TARGET_FILE:QtSoundModem>'; \
                  for dep in $(otool -L \"$exe\" | awk 'NR>1 {print $1}' | grep -E '/libhidapi'); do \
-                     install_name_tool -change \"$dep\" '@rpath/${HIDAPI_NAME}' \"$exe\"; \
+                     install_name_tool -change \"$dep\" '@executable_path/../Frameworks/${HIDAPI_NAME}' \"$exe\"; \
                  done"
         COMMENT "Embedding ${HIDAPI_NAME} into QtSoundModem.app/Contents/Frameworks"
         VERBATIM
