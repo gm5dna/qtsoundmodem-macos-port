@@ -12,8 +12,7 @@ were written with heavy assistance from Claude. Upstream ships
 Linux/Windows binaries only and does not accept pull requests, so this
 is a downstream fork.
 
-A changelog summarising the differences from upstream will be added
-alongside the first published build.
+See [CHANGELOG.md](CHANGELOG.md) for the per-release delta from upstream.
 
 ## Install (Homebrew)
 
