@@ -192,6 +192,15 @@ int main(int argc, char *argv[])
 	// HAL is now at 48 kHz. Doing it here, before getSettings()'s
 	// QMediaDevices::defaultAudioInput() call, lets Qt's first probe
 	// see the post-retune device.
+	//
+	// Gated on !nonGUIMode: --decode-wav, --decode-wav-native, and
+	// nogui starts all set nonGUIMode=1 and bypass live audio entirely.
+	// Mutating the user's CoreAudio hardware rate from a regression-
+	// test harness or a headless WAV-decode invocation would be a
+	// nasty surprise. --dump-input does NOT set nonGUIMode (it
+	// captures live audio on top of normal operation), so it still
+	// gets the retune.
+	if (!nonGUIMode)
 	{
 		QSettings ini("QtSoundModem.ini", QSettings::IniFormat);
 		bool autoRetune = ini.value("Init/AutoRetuneSampleRate", 1).toBool();
