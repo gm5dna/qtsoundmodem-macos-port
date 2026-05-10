@@ -4880,14 +4880,12 @@ void QtSoundModem::StartWatchdog()
 			 break;
 		 }
 	 }
+	 bool usedPreferredFallback = false;
 	 if (g_audioInputRate == 0)
 	 {
 		 format = deviceInfo.preferredFormat();
 		 g_audioInputRate = format.sampleRate();
-		 Debugprintf("WARNING: input device does not support 12/24/48 kHz "
-			 "stereo Int16; preferredFormat is %d Hz / %d ch / sample-format %d.",
-			 format.sampleRate(), format.channelCount(),
-			 (int)format.sampleFormat());
+		 usedPreferredFallback = true;
 	 }
 
 	 // Per-direction gate to suppress repeat dialogs when multiple init
@@ -4907,6 +4905,18 @@ void QtSoundModem::StartWatchdog()
 	 const bool fmtOk = isCompatibleAudioInputFormat(format);
 	 if (!rateOk || !fmtOk)
 	 {
+		 // The fallback to preferredFormat lands here only when we
+		 // couldn't get stereo Int16 at any of 48/24/12 kHz AND
+		 // the device's preferred format is also unsafe. Surface
+		 // the device's offer in the trace before the REFUSED line
+		 // so the user can see why we wouldn't open the stream.
+		 if (usedPreferredFallback)
+			 Debugprintf("Input device offers no stereo Int16 at "
+				 "12/24/48 kHz; preferredFormat is %d Hz / %d ch / "
+				 "sample-format %d (unusable for the modem).",
+				 format.sampleRate(), format.channelCount(),
+				 (int)format.sampleFormat());
+
 		 // Drift figure for the rate diagnostic (only meaningful when the
 		 // rate is the problem — float-format / mono is reported separately).
 		 int decim = (g_audioInputRate < 12000) ? 1 : g_audioInputRate / 12000;
@@ -4968,6 +4978,19 @@ void QtSoundModem::StartWatchdog()
 	 // reinterpreted as stereo halves effective time resolution and
 	 // the demod silently runs at the wrong baud rate).
 	 g_audioInputChannelCount = format.channelCount();
+
+	 // Mono-only USB radio interfaces (e.g. C-Media chipsets) report
+	 // mono Int16 as their only supported format. The candidate-rate
+	 // loop asks for stereo and gets refused at every rate; we fall
+	 // through to preferredFormat which lands on (e.g.) 48 kHz mono.
+	 // That's a normal, working path — the modem broadcasts mono to
+	 // stereo internally — so log it as info, not a warning.
+	 if (usedPreferredFallback)
+		 Debugprintf("Input device offers mono only; opened at "
+			 "preferredFormat %d Hz / %d ch / sample-format %d "
+			 "(modem broadcasts mono → stereo before decimation).",
+			 g_audioInputRate, format.channelCount(),
+			 (int)format.sampleFormat());
 
 	 // Design (or re-design) the antialias FIR for the negotiated rate.
 	 // No-op if the rate hasn't changed since last call.
