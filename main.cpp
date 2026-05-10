@@ -29,6 +29,12 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 #include <QStandardPaths>
 #include <QDir>
 #include <QDebug>
+#include <QSettings>
+
+#if defined(Q_OS_MACOS)
+extern "C" int macSetDeviceNominalSampleRate(const char *uidUtf8,
+    double *outChosenRate, char *errBuf, int errBufLen);
+#endif
 #include <errno.h>
 #include <limits.h>
 #include <string.h>
@@ -173,6 +179,49 @@ int main(int argc, char *argv[])
 		if (!QDir::setCurrent(macConfigDir))
 			qWarning() << "Failed to chdir to" << macConfigDir
 				<< "— settings may fail to save.";
+	}
+
+	// Pre-Qt retune: switch the saved RX/TX devices' nominal CoreAudio
+	// rate to a 12-kHz multiple BEFORE Qt populates QPlatformAudioDevices'
+	// device-format cache. Qt 6 caches AudioDeviceFormat per QAudioDevice
+	// and only refreshes it on device-list-changed events; a HAL
+	// kAudioDevicePropertyNominalSampleRate change does NOT fire that.
+	// If we retune AFTER Qt's first QMediaDevices call (e.g. inside
+	// QtSoundInit), Qt's cache reflects pre-retune capabilities and
+	// QAudioSource::start refuses our 48 kHz format — even though the
+	// HAL is now at 48 kHz. Doing it here, before getSettings()'s
+	// QMediaDevices::defaultAudioInput() call, lets Qt's first probe
+	// see the post-retune device.
+	{
+		QSettings ini("QtSoundModem.ini", QSettings::IniFormat);
+		bool autoRetune = ini.value("Init/AutoRetuneSampleRate", 1).toBool();
+		if (autoRetune) {
+			QByteArray rxId = QByteArray::fromBase64(
+				ini.value("Init/SndRXDeviceId").toString().toUtf8());
+			QByteArray txId = QByteArray::fromBase64(
+				ini.value("Init/SndTXDeviceId").toString().toUtf8());
+
+			char errBuf[256];
+			double chosen = 0.0;
+			if (!rxId.isEmpty()) {
+				errBuf[0] = '\0';
+				int rc = macSetDeviceNominalSampleRate(
+					rxId.constData(), &chosen, errBuf, sizeof(errBuf));
+				qDebug() << "Pre-Qt RX retune rc=" << rc
+				         << "rate=" << chosen
+				         << "uid=" << rxId.constData()
+				         << "err=" << errBuf;
+			}
+			if (!txId.isEmpty() && txId != rxId) {
+				errBuf[0] = '\0';
+				int rc = macSetDeviceNominalSampleRate(
+					txId.constData(), &chosen, errBuf, sizeof(errBuf));
+				qDebug() << "Pre-Qt TX retune rc=" << rc
+				         << "rate=" << chosen
+				         << "uid=" << txId.constData()
+				         << "err=" << errBuf;
+			}
+		}
 	}
 #endif
 
