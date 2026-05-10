@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'mac-*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-14
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VERSION: ${{ github.ref_name }}
+      DMG_NAME: QtSoundModem-${{ github.ref_name }}.dmg
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          brew update
+          brew install qt@6 fftw hidapi
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix qt@6)"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Bundle Qt frameworks
+        run: |
+          QT_PREFIX="$(brew --prefix qt@6)"
+          "$QT_PREFIX/bin/macdeployqt" build/QtSoundModem.app
+
+      - name: Ad-hoc codesign bundle
+        run: |
+          STAGE="$(mktemp -d)"
+          cp -R build/QtSoundModem.app "$STAGE/"
+          cd "$STAGE"
+          codesign --deep --force --sign - QtSoundModem.app
+          codesign --verify --deep --strict QtSoundModem.app
+          mv QtSoundModem.app "$GITHUB_WORKSPACE/build/QtSoundModem.app.signed"
+          rm -rf "$GITHUB_WORKSPACE/build/QtSoundModem.app"
+          mv "$GITHUB_WORKSPACE/build/QtSoundModem.app.signed" "$GITHUB_WORKSPACE/build/QtSoundModem.app"
+
+      - name: Build .dmg
+        run: |
+          STAGE="$(mktemp -d)"
+          cp -R build/QtSoundModem.app "$STAGE/"
+          ln -s /Applications "$STAGE/Applications"
+          hdiutil create \
+            -volname "QtSoundModem ${VERSION}" \
+            -srcfolder "$STAGE" \
+            -ov \
+            -format UDZO \
+            "$DMG_NAME"
+
+      - name: SHA-256 checksums
+        run: shasum -a 256 "$DMG_NAME" > SHA256SUMS
+
+      - name: Extract release notes
+        run: bash scripts/extract-release-notes.sh CHANGELOG.md "$VERSION" > release-notes.md
+
+      - name: Append release footer
+        run: |
+          printf '\n---\n\n## Installing the .dmg\n\nThe `.dmg` is ad-hoc signed (no Apple Developer ID) and will be quarantined by Gatekeeper on first launch.\n\n- Open the `.dmg`, drag `QtSoundModem.app` to `/Applications/`.\n- First launch: right-click (or Control-click) `QtSoundModem.app` in `/Applications/` and choose **Open** from the menu, then confirm the Gatekeeper prompt. Subsequent launches are normal double-click.\n- Alternatively, from Terminal: `xattr -d com.apple.quarantine /Applications/QtSoundModem.app`.\n\n## Verifying the download\n\n```\nshasum -a 256 -c SHA256SUMS\n```\n\n## Homebrew\n\nThe Homebrew tap [gm5dna/amateur-radio](https://github.com/gm5dna/homebrew-amateur-radio) is the preferred install route and builds from source against `macos-port` HEAD.\n\n## Links\n\n- [README](README.md)\n- [CHANGELOG](CHANGELOG.md)\n' >> release-notes.md
+
+      - name: Determine pre-release flag
+        id: prerelease
+        run: |
+          if [[ "$VERSION" == *"-rc"* || "$VERSION" == *"-alpha"* || "$VERSION" == *"-beta"* ]]; then
+            echo "flag=--prerelease" >> "$GITHUB_OUTPUT"
+          else
+            echo "flag=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        run: |
+          gh release create "$VERSION" \
+            --title "$VERSION" \
+            --notes-file release-notes.md \
+            ${{ steps.prerelease.outputs.flag }} \
+            "$DMG_NAME" SHA256SUMS
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ github.ref_name }}
+          path: build/
+          retention-days: 7
