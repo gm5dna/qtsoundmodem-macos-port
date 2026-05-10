@@ -37,21 +37,14 @@ jobs:
       - name: Build
         run: cmake --build build --parallel
 
-      - name: Bundle Qt frameworks
+      - name: Verify bundle
         run: |
-          QT_PREFIX="$(brew --prefix qt@6)"
-          "$QT_PREFIX/bin/macdeployqt" build/QtSoundModem.app
-
-      - name: Ad-hoc codesign bundle
-        run: |
-          STAGE="$(mktemp -d)"
-          cp -R build/QtSoundModem.app "$STAGE/"
-          cd "$STAGE"
-          codesign --deep --force --sign - QtSoundModem.app
-          codesign --verify --deep --strict QtSoundModem.app
-          mv QtSoundModem.app "$GITHUB_WORKSPACE/build/QtSoundModem.app.signed"
-          rm -rf "$GITHUB_WORKSPACE/build/QtSoundModem.app"
-          mv "$GITHUB_WORKSPACE/build/QtSoundModem.app.signed" "$GITHUB_WORKSPACE/build/QtSoundModem.app"
+          # cmake/macdeployqt.cmake runs macdeployqt, bundles libfftw3f,
+          # and ad-hoc codesigns the .app as a POST_BUILD step, so by
+          # this point the bundle is complete and signed. Just verify.
+          codesign --verify --deep --strict --verbose=2 build/QtSoundModem.app
+          test -d build/QtSoundModem.app/Contents/Frameworks/QtCore.framework
+          test -f build/QtSoundModem.app/Contents/_CodeSignature/CodeResources
 
       - name: Build .dmg
         run: |
