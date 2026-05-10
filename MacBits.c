@@ -78,6 +78,7 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 #include <termios.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <sys/types.h>
 
 #include "UZ7HOStuff.h"
 
