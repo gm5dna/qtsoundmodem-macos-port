@@ -835,6 +835,8 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	actWaterfall1->setWhatsThis(tr("<b>First waterfall</b><br/>Toggles the upper of the two waterfall displays. Stored as <tt>Window/Waterfall1</tt>."));
 	actWaterfall2->setToolTip(tr("Show or hide the lower waterfall pane."));
 	actWaterfall2->setWhatsThis(tr("<b>Second Waterfall</b><br/>Toggles the lower waterfall display. Stored as <tt>Window/Waterfall2</tt>."));
+	actConstellation->setToolTip(tr("Show or hide the PSK constellation diagram window."));
+	actConstellation->setWhatsThis(tr("<b>PSK Constellation</b><br/>Toggles a separate window showing per-channel PSK constellation diagrams — useful for tuning PSK signals. Stored as <tt>Window/PSKWindow</tt>."));
 
 	// macOS QMenuBar only renders QMenu submenus at the top level —
 	// QActions added directly via addAction() are silently dropped.
