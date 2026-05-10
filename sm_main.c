@@ -75,6 +75,7 @@ int TXPort = 8884;
 
 BOOL Firstwaterfall = 1;
 BOOL Secondwaterfall = 1;
+BOOL PSKWindow = 1;
 int multiCore = FALSE;
 
 BOOL MinOnStart  =  0;

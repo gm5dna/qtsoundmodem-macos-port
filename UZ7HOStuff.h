@@ -1014,6 +1014,7 @@ extern UCHAR w_state;
 
 extern BOOL Firstwaterfall;
 extern BOOL Secondwaterfall;
+extern BOOL PSKWindow;
 
 extern int dcd_threshold;
 extern int rxOffset;

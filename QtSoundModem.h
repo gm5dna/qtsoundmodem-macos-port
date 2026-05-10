@@ -119,6 +119,7 @@ private:
 	QAction *actAbout;
 	QAction *actWaterfall1;
 	QAction *actWaterfall2;
+	QAction *actConstellation;
 
 signals:
 

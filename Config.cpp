@@ -346,6 +346,7 @@ void getSettings()
 
 	Firstwaterfall = settings->value("Window/Waterfall1", TRUE).toInt();
 	Secondwaterfall = settings->value("Window/Waterfall2", TRUE).toInt();
+	PSKWindow = settings->value("Window/PSKWindow", TRUE).toInt();
 
 	txdelay[0] = settings->value("Modem/TxDelay1", 250).toInt();
 	txdelay[1] = settings->value("Modem/TxDelay2", 250).toInt();
@@ -603,6 +604,7 @@ void saveSettings()
 
 	settings->setValue("Window/Waterfall1", Firstwaterfall);
 	settings->setValue("Window/Waterfall2", Secondwaterfall);
+	settings->setValue("Window/PSKWindow", PSKWindow);
 
 	settings->setValue("Modem/TxDelay1", txdelay[0]);
 	settings->setValue("Modem/TxDelay2", txdelay[1]);
