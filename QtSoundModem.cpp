@@ -55,6 +55,7 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 
 #include <time.h>
 
+QDialog * constellationDialog;
 QImage *Constellation[4];
 QImage *Waterfall = 0;
 QLabel *DCDLabel[4];
@@ -386,7 +387,24 @@ extern "C" void updateDCD(int Chan, bool State)
 
 bool QtSoundModem::eventFilter(QObject* obj, QEvent *evt)
 {
-	UNUSED(obj);
+	// Sync the View > PSK Constellation menu when the user dismisses
+	// the dialog via its title-bar close button. Suppressed during
+	// shutdown so the teardown close() doesn't clobber the persisted
+	// preference.
+	if (obj == constellationDialog && evt->type() == QEvent::Close && !Closing)
+	{
+		PSKWindow = 0;
+		if (actConstellation)
+			actConstellation->setChecked(false);
+		saveSettings();
+		return false;
+	}
+
+	// The legacy logic below assumes the filter is installed on the main
+	// window itself; for any other watched object pass events through
+	// untouched so we don't swallow paint/resize/input on the dialog.
+	if (obj != this)
+		return false;
 
 	if (evt->type() == QEvent::Resize)
 	{
@@ -527,12 +545,20 @@ void QtSoundModem::menuChecked()
 	int state = Act->isChecked();
 
 	if (Act == actWaterfall1)
+	{
 		Firstwaterfall = state;
-
+		initWaterfall(Firstwaterfall | Secondwaterfall);
+	}
 	else if (Act == actWaterfall2)
+	{
 		Secondwaterfall = state;
-
-	initWaterfall(Firstwaterfall | Secondwaterfall);
+		initWaterfall(Firstwaterfall | Secondwaterfall);
+	}
+	else if (Act == actConstellation)
+	{
+		PSKWindow = state;
+		constellationDialog->setVisible(state);
+	}
 
 	saveSettings();
 }
@@ -567,7 +593,6 @@ void QtSoundModem::initWaterfall(int state)
 
 QRect PSKRect = { 100,100,100,100 };
 
-QDialog * constellationDialog;
 QLabel * constellationLabel[4];
 QLabel * QualLabel[4];
 
@@ -643,6 +668,7 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	constellationDialog = new QDialog(nullptr, Qt::WindowTitleHint | Qt::WindowSystemMenuHint);
 	constellationDialog->resize(488, 140);
 	constellationDialog->setGeometry(PSKRect);
+	constellationDialog->installEventFilter(this);
 
 	QFont f("Arial", 8, QFont::Normal);
 
@@ -662,7 +688,8 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 		Constellation[i]->fill(black);
 		constellationLabel[i]->setPixmap(QPixmap::fromImage(*Constellation[i]));
 	}
-	constellationDialog->show();
+	if (PSKWindow)
+		constellationDialog->show();
 
 #if !defined(Q_OS_MACOS)
 	// macOS uses the Dock for minimised windows; a QSystemTrayIcon would
@@ -795,6 +822,7 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 
 	actWaterfall1 = setupMenuLine(viewMenu, (char *)"First waterfall", this, Firstwaterfall);
 	actWaterfall2 = setupMenuLine(viewMenu, (char *)"Second Waterfall", this, Secondwaterfall);
+	actConstellation = setupMenuLine(viewMenu, (char *)"PSK Constellation", this, PSKWindow);
 
 	// macOS QMenuBar only renders QMenu submenus at the top level —
 	// QActions added directly via addAction() are silently dropped.
@@ -3665,6 +3693,8 @@ void QtSoundModem::closeEvent(QCloseEvent *event)
 {
 	UNUSED(event);
 
+	Closing = TRUE;
+
 	QSettings mysettings("QtSoundModem.ini", QSettings::IniFormat);
 	mysettings.setValue("geometry", QWidget::saveGeometry());
 	mysettings.setValue("windowState", saveState());
@@ -3672,7 +3702,6 @@ void QtSoundModem::closeEvent(QCloseEvent *event)
 	mysettings.setValue("Constellationgeometry", constellationDialog->saveGeometry());
 	constellationDialog->close();
 
-	Closing = TRUE;
 	qDebug() << "Closing";
 
 	QThread::msleep(100);
@@ -3683,17 +3712,18 @@ QtSoundModem::~QtSoundModem()
 {
 	qDebug() << "Saving Settings";
 
+	Closing = TRUE;
+
 	closeTraceLog();
-		
+
 	QSettings mysettings("QtSoundModem.ini", QSettings::IniFormat);
 	mysettings.setValue("geometry", saveGeometry());
 	mysettings.setValue("windowState", saveState());
 
 	mysettings.setValue("Constellationgeometry", constellationDialog->saveGeometry());
 	constellationDialog->close();
-	
-	saveSettings();	
-	Closing = TRUE;
+
+	saveSettings();
 	qDebug() << "Closing";
 
 	QThread::msleep(100);
