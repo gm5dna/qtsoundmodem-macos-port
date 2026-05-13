@@ -4113,7 +4113,7 @@ void il2p_rec_bit(int chan, int subchan, int slice, int dbit)
 
 						F->pc = 0;
 
-						if (il2p_crc[chan])
+						if (il2p_crc[chan] & 1)
 						{
 							// enter collect crc state
 
@@ -4154,7 +4154,7 @@ void il2p_rec_bit(int chan, int subchan, int slice, int dbit)
 			{
 				// got frame. See if need crc
 
-				if (il2p_crc[chan])
+				if (il2p_crc[chan] & 1)
 				{
 					// enter collect crc state
 
@@ -4236,7 +4236,7 @@ void il2p_rec_bit(int chan, int subchan, int slice, int dbit)
 			debugTimeStamp("Decoded Packet is", 'R');
 			debugHexDump(pp->frame_data, pp->frame_len, 'R');
 
-			if (il2p_crc[chan])
+			if (il2p_crc[chan] & 1)
 			{
 				//copy crc bytes to packet object
 
