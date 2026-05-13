@@ -3748,7 +3748,7 @@ void init_BPF(float freq1, float freq2, unsigned short tap, float samplerate, fl
 
 	bpf_h[tap / 2] = bpf_h[tap / 2] + 1;
 
-	for (i = 0; i <= tap; i++)
+	for (i = 0; i < tap; i++)
 	{
 		buf[i] = -(bpf_l[i] + bpf_h[i]);
 	}
