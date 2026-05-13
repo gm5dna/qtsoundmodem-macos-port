@@ -502,15 +502,32 @@ void SoundFlush(void)
 
 	// Wait for QAudioSink to reach IdleState. The
 	// audioOutStateChanged slot in QtSoundModem.cpp clears
-	// SoundIsPlaying on IdleState. 5 s is a generous bound — even
-	// a 1200-sample frame at 12 kHz drains in well under 1 s.
+	// SoundIsPlaying when the sink signals IdleState. 1 s is a
+	// generous bound: a 1200-sample frame at 12 kHz drains in
+	// ~100 ms, and even RUH 9600 at 48 kHz drains in ~100 ms.
+	// The previous 5 s ceiling meant up to 5 s of PTT-on dead
+	// carrier when the sink was wedged (IdleState never delivered,
+	// e.g. mid-Tx hot-unplug or a CoreAudio device glitch).
+	//
+	// A synchronous state() peek was considered but rejected: there
+	// is a race between out->write() returning on the worker thread
+	// and the sink transitioning out of IdleState on the audio
+	// thread, so a sync IdleState reading could be stale-from-the-
+	// previous-frame and short-circuit the wait too soon. Stick to
+	// the async flag; the tightened timeout is the real fix here.
 	unsigned int started = getTicks();
-	while (SoundIsPlaying && (getTicks() - started) < 5000)
+	unsigned int elapsed = 0;
+	while (SoundIsPlaying && elapsed < 1000)
+	{
 		usleep(10000); // 10 ms
+		elapsed = getTicks() - started;
+	}
 
-	// If we hit the timeout (sink torn down by hot-unplug, or
-	// IdleState never delivered for some other reason) clear the
-	// flag explicitly so DoTX / ProcessNewSamples don't wedge.
+	if (SoundIsPlaying)
+		Debugprintf("MacBits: SoundFlush timed out after %u ms waiting for IdleState; forcing PTT release\n", elapsed);
+
+	// Clear the flag explicitly so DoTX / ProcessNewSamples don't
+	// wedge if we exited via the timeout above.
 	SoundIsPlaying = 0;
 }
 
