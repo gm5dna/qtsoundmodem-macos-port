@@ -4442,7 +4442,10 @@ static void send_bit(int chan, int b, int polarity);
 
 string * il2p_send_frame(int chan, packet_t pp, int max_fec, int polarity)
 {
-	unsigned char encoded[IL2P_MAX_PACKET_SIZE] = "";
+	// +4 reserves room for the four Hamming(7,4)-encoded CRC bytes appended
+	// when il2p_crc[chan] & 1; a max-payload frame otherwise fills the
+	// buffer exactly and the CRC suffix overruns the stack.
+	unsigned char encoded[IL2P_MAX_PACKET_SIZE + 4] = "";
 	string * packet = newString();
 	int preamblecount;
 	unsigned char preamble[1024];
@@ -4476,6 +4479,10 @@ string * il2p_send_frame(int chan, packet_t pp, int max_fec, int polarity)
 		// CRC3 encoded from high nibble of 16 - bit CRC value (from crc2)
 		// CRC0 encoded from low nibble of 16 - bit CRC value (from crc1)
 
+		if (elen + 4 > (int)sizeof(encoded)) {
+			Debugprintf("IL2P: encoded buffer too small for CRC suffix (elen=%d, size=%d)\n", elen, (int)sizeof(encoded));
+			return (packet);
+		}
 		encoded[elen++] = Hamming74EncodeTable[crc2 >> 4];
 		encoded[elen++] = Hamming74EncodeTable[crc2 & 0xf];
 		encoded[elen++] = Hamming74EncodeTable[crc1 >> 4];
