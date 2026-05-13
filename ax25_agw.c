@@ -696,8 +696,10 @@ void on_AGW_M_frame(int port, Byte PID, char * CallFrom, char *CallTo, Byte *  M
 
 	get_addr(Calls, path);
 
+	LOCK_FRAME_BUF();
 	Add(&all_frame_buf[port],
 		make_frame(Data, path, PID, 0, 0, U_FRM, U_UI, FALSE, SET_F, SET_C));
+	UNLOCK_FRAME_BUF();
 
 }
 
@@ -907,7 +909,9 @@ void on_AGW_K_frame(struct AGWHeader * Frame)
 
 	stringAdd(TXMSG, CRCString, 2);
 
+	LOCK_FRAME_BUF();
 	Add(&all_frame_buf[Frame->Port], TXMSG);
+	UNLOCK_FRAME_BUF();
 
 	// for now assume only used for sending UI
 

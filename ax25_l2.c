@@ -768,7 +768,7 @@ void on_RR(TAX25Port * AX25Sess, Byte * path, int  nr, int  pf, int cr)
 
 	if (cr == SET_R)
 	{
-		// Determine which frames could get into the user’s frame buffer.
+		// Determine which frames could get into the userï¿½s frame buffer.
 		i = AX25Sess->vs;
 
 		need_frame[index++] = i + '0';
@@ -911,7 +911,7 @@ void  on_I(void * socket, TAX25Port * AX25Sess, int PID, Byte * path, string * d
 			return;
 		}
 
-		// Determine which frames could get into the user’s frame buffer.
+		// Determine which frames could get into the userï¿½s frame buffer.
 
 		i = AX25Sess->vs;
 
@@ -1425,7 +1425,13 @@ void Digipeater(int snd_ch, string * frame)
 
 					stringAdd(frameCopy, CRCString, 2);
 
+					// Digipeat producer for all_frame_buf[], runs on the
+					// modem worker. Same race as the AGW/KISS producers
+					// 4571fcb locked; 4571fcb's grep missed this file for
+					// the same ISO-8859/CRLF binary-detection reason.
+					LOCK_FRAME_BUF();
 					Add(&all_frame_buf[snd_ch], frameCopy);
+					UNLOCK_FRAME_BUF();
 
 					return;
 				}
