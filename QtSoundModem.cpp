@@ -4373,7 +4373,15 @@ void QtSoundModem::StartWatchdog()
 		 // pointer makes the code misleading. Touched on the way past.
 		 if (m_audioOutput->error() != QAudio::NoError)
 		 {
-			 // Error handling
+			 // Sink errored out mid-Tx (USB unplug, CoreAudio device-lost,
+			 // rate change rejected, etc). Log so the wedge is diagnosable;
+			 // the sendSamplestoQSound state/error check + SoundFlush
+			 // 1 s timeout (MacBits.c) handles PTT release. Clear the
+			 // SoundIsPlaying flag here too in case sendSamplestoQSound
+			 // wasn't actively waiting when the state changed.
+			 Debugprintf("audioOutStateChanged: sink stopped with error %d — Tx aborted",
+				 (int)m_audioOutput->error());
+			 SoundIsPlaying = 0;
 		 }
 		 else
 		 {
@@ -5180,18 +5188,49 @@ void QtSoundModem::StartWatchdog()
 	 Debugprintf("ToSend %d Space %d Period Size %d chunks %d ", n * 4, space, size, chunks);
 
 	 // We are passed Stereo 16 bit samples. I think n is number of samples so send n x 4
-
+	 //
+	 // The busy-wait below previously had no error / state check and no
+	 // timeout: if QAudioSink entered StoppedState with a non-NoError
+	 // status while a Tx was in flight (USB unplug mid-Tx, CoreAudio
+	 // device-lost, sample-rate change rejected by the device), the
+	 // worker spun forever in txSleep(10). PTT was keyed before the
+	 // first sample (SMMain.c:873) and RadioPTT(Chan, 0) was never
+	 // reached. Radio sat keyed on dead air until the user killed the
+	 // app.
+	 //
+	 // Now: exit the loop if the sink reports StoppedState / an error,
+	 // or if 2 s elapses without bytesFree() reaching n (a backstop for
+	 // the device-wedge case where state() never advances). Returning
+	 // early lets SendtoCard return; SoundFlush's IdleState wait fires
+	 // its 1 s timeout, clears SoundIsPlaying, and SMMain.c's DoTX
+	 // drops PTT cleanly on the next pass.
+	 const unsigned int kStuckMs = 2000;
+	 unsigned int waitStartedMs = getTicks();
 	 for (;;)
 	 {
 		 int frames;
+		 QAudio::State state;
+		 QAudio::Error err;
 		 {
 			 QMutexLocker locker(&s_audioMutex);
 			 if (!m_audioOutput || !out)
 				 return buf;
 			 frames = m_audioOutput->bytesFree() / 4;
+			 state = m_audioOutput->state();
+			 err = m_audioOutput->error();
 		 }
 		 if (frames >= n)
 			 break;
+		 if (state == QAudio::StoppedState || err != QAudio::NoError)
+		 {
+			 Debugprintf("sendSamplestoQSound: sink stopped (state=%d err=%d) — aborting Tx", (int)state, (int)err);
+			 return buf;
+		 }
+		 if (getTicks() - waitStartedMs > kStuckMs)
+		 {
+			 Debugprintf("sendSamplestoQSound: bytesFree wedged at %d after %u ms (need %d) — aborting Tx", frames, getTicks() - waitStartedMs, n);
+			 return buf;
+		 }
 		 txSleep(10);
 		 Debugprintf("Space %d", frames);
 	 }
