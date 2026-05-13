@@ -443,6 +443,9 @@ extern unsigned short * DMABuffer;
 extern unsigned short QtDMABuffer[8192];
 extern int Number;
 extern int SoundIsPlaying;
+extern int SampleNo;
+extern float TX_Samplerate;
+extern int pttOnTime(void);
 
 short * SendtoCard(short * buf, int n)
 {
@@ -529,6 +532,35 @@ void SoundFlush(void)
 	// Clear the flag explicitly so DoTX / ProcessNewSamples don't
 	// wedge if we exited via the timeout above.
 	SoundIsPlaying = 0;
+
+	// Timed-PTT tail. QAudioSink IdleState means "my push buffer is
+	// empty" — not "the DAC has drained". CoreAudio HAL (and the USB
+	// CODEC ring buffer below it) still hold the last few tens of ms
+	// of samples; dropping PTT now would truncate the trailing flag
+	// bytes / IL2P trailer on a slow-keying USB radio interface.
+	//
+	// Mirror the ALSA path's logic (ALSASound.c::SoundFlush): the
+	// total play wall-clock-time for SampleNo samples at TX_Samplerate
+	// is txlenMs; subtract elapsed wall-time since PTT was keyed
+	// (pttclk → pttOnTime) and sleep the remainder. IL2P modes have
+	// already padded the tail with txLatency*baud extra bits (see
+	// il2p.c::il2p_get_new_bit_tail), so SampleNo accounts for the
+	// soundcard startup latency without us double-counting it here.
+	//
+	// Bound the sleep at 500 ms so a wedged SampleNo/pttclk (e.g. a
+	// caller that doesn't reset SampleNo at PTT-on, or a path that
+	// shares the PTT timer across frames) can't hold PTT keyed
+	// indefinitely. A typical CoreAudio HAL drain is 50-150 ms; a
+	// computed remainder past 500 ms means state is stale and the
+	// sleep should be skipped.
+	if (useTimedPTT && SampleNo > 0 && TX_Samplerate > 0.0f)
+	{
+		int txlenMs = (int)((1000.0f * SampleNo) / TX_Samplerate);
+		int elapsedMs = pttOnTime();
+		int remain = txlenMs - elapsedMs;
+		if (remain > 0 && remain <= 500)
+			usleep(remain * 1000);
+	}
 }
 
 extern int nonGUIMode;
