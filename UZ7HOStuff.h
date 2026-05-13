@@ -824,6 +824,22 @@ extern TStringList KISS_iacked[];
 
 extern TStringList all_frame_buf[5];
 
+// One mutex covers Add/Delete/Count/Items access on every channel's
+// frame queue. Producers (AGW/KISS sockets, Qt I/O thread) and the
+// modem worker thread otherwise race on TStringList realloc.
+// pthread on POSIX; Windows kept unchanged (upstream race lives on
+// there until separately addressed). Helpers below abstract the
+// platform difference so call sites stay portable.
+#ifndef _WIN32
+#include <pthread.h>
+extern pthread_mutex_t all_frame_buf_mutex;
+#define LOCK_FRAME_BUF()   pthread_mutex_lock(&all_frame_buf_mutex)
+#define UNLOCK_FRAME_BUF() pthread_mutex_unlock(&all_frame_buf_mutex)
+#else
+#define LOCK_FRAME_BUF()   ((void)0)
+#define UNLOCK_FRAME_BUF() ((void)0)
+#endif
+
 extern unsigned short pkt_raw_min_len;
 extern int stat_r_mem;
 
