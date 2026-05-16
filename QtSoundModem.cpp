@@ -50,6 +50,7 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 #include <QFile>
 #include <QMutex>
 #include <QStyleHints>
+#include <atomic>
 
 #include "UZ7HOStuff.h"
 
@@ -4206,6 +4207,22 @@ void QtSoundModem::StartWatchdog()
  // carry a `this`.
  static QMutex s_audioMutex;
 
+ // Set by closeQSound (GUI thread, capture teardown / device swap),
+ // consumed by PollQSound at entry on the worker thread. closeQSound
+ // tears down the QAudioSource but does NOT drain the accumulated
+ // capture Buffer, and the PollQSound decimation loop runs outside
+ // s_audioMutex by design (teardown responsiveness), so without this
+ // a back-to-back closeQSound()+initializeAudioIn() (the deviceaccept
+ // path) leaves stale old-stream bytes in Buffer plus a stale
+ // sub-frame carry. Those would: (a) prepend a stale tail to the new
+ // device's stream, and (b) let a stale chunk consume the deferred
+ // FIR-history reset before the new stream's first chunk. Dropping
+ // the buffered capture state on the worker thread — the sole owner
+ // of BufferLen and the carry — at the next poll closes both races
+ // without taking s_audioMutex over the hot decimation path. (Codex
+ // third-pass catch on items 6 and 7.)
+ static std::atomic<int> capture_reset_pending{0};
+
 #ifndef WIN32
  extern "C" int stricmp(char * pStr1, char *pStr2);
 #endif
@@ -4694,6 +4711,13 @@ void QtSoundModem::StartWatchdog()
 				 m_audioInput->deleteLater();
 				 m_audioInput = nullptr;
 			 }
+			 // Hot-unplug tears the input down here, NOT via
+			 // closeQSound, and the device is auto-reopened on replug.
+			 // Request the same capture-state drop so a half-chunk left
+			 // in Buffer (plus any sub-frame carry) from the vanished
+			 // device can't be prepended to the re-opened stream.
+			 // (Codex fourth-pass catch on item 6.)
+			 capture_reset_pending.store(1, std::memory_order_release);
 			 inDeviceInfo = QAudioDevice();
 		 }
 		 if (outGone)
@@ -5175,6 +5199,15 @@ void QtSoundModem::StartWatchdog()
 		 m_audioOutput->deleteLater();
 		 m_audioOutput = nullptr;
 	 }
+
+	 // Discard whatever the worker accumulated for the old stream:
+	 // its leftover Buffer bytes and sub-frame carry must not bleed
+	 // into the replacement device (deviceaccept calls closeQSound()
+	 // then initializeAudioIn() back-to-back, so the worker may never
+	 // observe the null window). Done as a flag consumed by PollQSound
+	 // on the worker thread — the sole writer of BufferLen / the carry
+	 // — so we don't take s_audioMutex over the decimation loop.
+	 capture_reset_pending.store(1, std::memory_order_release);
  }
 
  extern "C" void txSleep(int mS);
@@ -5592,14 +5625,54 @@ extern "C" void PollQSound()
 	// frequency, not a property of the data path.
 	const bool monoInput = (g_audioInputChannelCount == 1);
 
+	// Frame size in the raw, pre-mono-expansion byte domain: one
+	// int16 for mono input, an L/R pair for stereo.
+	const qint64 frameBytes =
+		monoInput ? (qint64)sizeof(short) : (qint64)(2 * sizeof(short));
+
+	// Carry for a sub-frame tail. QAudioSource delivers whole frames
+	// in practice, but QIODevice::read carries no such guarantee. If a
+	// backend ever returns a non-frame-aligned byte count, dropping
+	// the remainder does NOT restore alignment: the device's byte
+	// stream is contiguous, so its next bytes continue the same
+	// logical frame — discarding our side desyncs framing for the
+	// rest of the session. Instead hold the <frameBytes leftover here
+	// and prepend it to the next read so the device stream stays
+	// byte-contiguous. (Codex second-reviewer catch on
+	// BUG-rx-audit item 6.)
+	static char s_partialTail[4];   // frameBytes is at most 4
+	static int  s_partialTailLen = 0;
+
+	// Honour a capture-teardown request from closeQSound before doing
+	// anything with the buffer. Runs on the worker thread, the sole
+	// writer of BufferLen and the carry, so dropping them here is
+	// race-free. Discards stale old-stream bytes still queued in
+	// Buffer (teardown does not drain it) and any pending sub-frame
+	// tail, so a back-to-back device swap can neither prepend a stale
+	// carry to the new stream nor let a leftover old chunk consume
+	// the deferred FIR-history reset before the new stream's first
+	// chunk. The FIR flush itself is requested separately by
+	// aaFilterInit on the subsequent open.
+	if (capture_reset_pending.exchange(0, std::memory_order_acquire))
+	{
+		BufferLen = 0;
+		s_partialTailLen = 0;
+	}
+
 	qint64 x;
 	{
 		QMutexLocker locker(&s_audioMutex);
 		if (!m_audioInput)
+		{
+			s_partialTailLen = 0;   // stale across a device change
 			return;
+		}
 
 		if (in == nullptr)
+		{
+			s_partialTailLen = 0;
 			return;
+		}
 
 		// `size` is the post-expansion (stereo) byte budget. Mono reads
 		// half that and the expansion below fills in the missing L/R
@@ -5609,9 +5682,45 @@ extern "C" void PollQSound()
 		if (BufferLen + size > (int)sizeof(Buffer))
 			size = (int)sizeof(Buffer) - BufferLen;
 
-		const int requestSize = monoInput ? size / 2 : size;
-		x = in->read(&Buffer[BufferLen], requestSize);
+		// Prepend any carried sub-frame tail, then read after it so
+		// [carry][new bytes] reconstructs the device's contiguous
+		// stream. The read budget is reduced by the prepend so the
+		// post-expansion total still fits the overflow clamp.
+		if (s_partialTailLen > 0)
+			memcpy(&Buffer[BufferLen], s_partialTail, s_partialTailLen);
+
+		const int budget = (monoInput ? size / 2 : size) - s_partialTailLen;
+		const int requestSize = budget > 0 ? budget : 0;
+		x = in->read(&Buffer[BufferLen] + s_partialTailLen, requestSize);
 	}
+
+	if (x > 0)
+	{
+		// The carried bytes are now contiguous with the freshly read
+		// bytes and part of this chunk.
+		x += s_partialTailLen;
+		s_partialTailLen = 0;
+
+		const qint64 rem = x % frameBytes;
+		if (rem)
+		{
+			// Stash the trailing partial frame for the next call;
+			// process only the whole-frame prefix now.
+			static int warnedPartial = 0;
+			if (!warnedPartial)
+			{
+				warnedPartial = 1;
+				Debugprintf("PollQSound: backend returned a non-frame-"
+					"aligned read; carrying %lld byte(s) to next read "
+					"(mono=%d)", (long long)rem, (int)monoInput);
+			}
+			memcpy(s_partialTail, &Buffer[BufferLen + x - rem], (size_t)rem);
+			s_partialTailLen = (int)rem;
+			x -= rem;
+		}
+	}
+	// else: read returned nothing — leave s_partialTail/Len intact so
+	// the carried bytes are re-prepended on the next call.
 
 	// QIODevice::read returns -1 on error (device gone, hot-unplug
 	// race) and 0 if no data was available. Either way, leave
@@ -5679,6 +5788,24 @@ extern "C" void PollQSound()
 
 	while (BufferLen >= inChunkBytes)
 	{
+		// Re-check the teardown request inside the drain loop, not
+		// just at PollQSound entry: closeQSound / onAudioDevicesChanged
+		// can set it while we are mid-drain on stale old-stream chunks.
+		// Honouring it here drops the remaining buffered old data
+		// before it is decimated (which would otherwise consume the
+		// deferred FIR-history reset and save the old tail) and before
+		// a stale sub-frame carry is applied. Genuinely closing the
+		// GUI-close-races-an-in-flight-worker window needs a capture
+		// generation token / worker quiesce — a pre-existing
+		// architectural gap, see BUG-rx-audit "Known residual" — but
+		// this shrinks the window to a single in-progress chunk.
+		if (capture_reset_pending.exchange(0, std::memory_order_acquire))
+		{
+			BufferLen = 0;
+			s_partialTailLen = 0;
+			break;
+		}
+
 		short * src = (short *)Buffer;
 		short * processed;
 		int     processedFrames;
