@@ -5441,6 +5441,17 @@ static int fir_designed_rate = 0;  // 0 = needs design
 static float fir_histL[FIR_TAPS - 1];
 static float fir_histR[FIR_TAPS - 1];
 
+// Set by aaFilterInit (GUI thread, on every capture (re)open),
+// consumed by decimateAudioToModem (worker thread, the sole owner of
+// fir_histL/R). aaFilterInit must NOT zero the history itself: it
+// runs outside s_audioMutex, the decimation loop in PollQSound also
+// runs outside it, so a direct clear races the in-flight decimator —
+// whose trailing-history memcpy would re-fill the just-cleared arrays
+// with the previous stream's tail and defeat the flush. Deferring the
+// flush to the worker thread that owns the history removes the race
+// entirely. (Codex second-reviewer catch on BUG-rx-audit item 7.)
+static std::atomic<int> fir_hist_reset_pending{0};
+
 extern "C" void aaFilterInit(int sampleRateIn)
 {
 	// Defensive clamp: a misbehaving device negotiating 0 or a
@@ -5451,8 +5462,25 @@ extern "C" void aaFilterInit(int sampleRateIn)
 	if (sampleRateIn < 12000)
 		sampleRateIn = 12000;
 
+	// Request a decimator-history flush on every (re)open, even when
+	// the rate is unchanged. aaFilterInit is called from
+	// initializeAudioIn on every device open; the coefficient
+	// recompute below is correctly gated on a rate change (it is the
+	// expensive part and is otherwise rate-invariant), but the
+	// FIR_TAPS-1-sample history tail belongs to the *previous*
+	// stream. A same-rate device swap — close then reopen the same
+	// device, or a hot-replug at an unchanged rate — used to hit the
+	// rate-match early-return and carry ~2.6 ms (126 samples at
+	// 48 kHz) of the old stream into the first chunk of the new one,
+	// a small but real discontinuity / click at the demod input.
+	//
+	// The actual zeroing is deferred to decimateAudioToModem on the
+	// worker thread (see fir_hist_reset_pending) so it can't race the
+	// in-flight decimator.
+	fir_hist_reset_pending.store(1, std::memory_order_release);
+
 	if (sampleRateIn == fir_designed_rate)
-		return;  // already designed for this rate
+		return;  // coefficients already valid for this rate
 	fir_designed_rate = sampleRateIn;
 
 	const int M = FIR_TAPS - 1;  // 126
@@ -5474,14 +5502,6 @@ extern "C" void aaFilterInit(int sampleRateIn)
 	for (int n = 0; n < FIR_TAPS; n++)
 		fir_coeffs[n] = (float)(fir_coeffs[n] / sum);
 
-	// Reset history on rate change so a stale tail from the previous
-	// rate doesn't bleed into the first few output frames.
-	for (int i = 0; i < FIR_TAPS - 1; i++)
-	{
-		fir_histL[i] = 0.0f;
-		fir_histR[i] = 0.0f;
-	}
-
 	Debugprintf("Antialias FIR: %d taps, cutoff %.0f Hz at %d Hz input "
 		"(normalised fc=%.4f, group delay %d samples)",
 		FIR_TAPS, fc * sampleRateIn, sampleRateIn, fc, M / 2);
@@ -5501,6 +5521,22 @@ static inline short fir_clip16(float x)
 // harness exercises the same DSP the live build does.
 extern "C" void decimateAudioToModem(const short * src, int decim, short * dst)
 {
+	// Honour a pending history flush requested by aaFilterInit on a
+	// capture (re)open. Done here, on the sole thread that reads and
+	// writes fir_histL/R, so the flush cannot race the decimator's
+	// own trailing-history save. exchange() consumes the request
+	// exactly once even across the early-return paths below (decim<=1
+	// / decim>8 / undesigned), so a reset issued while the device is
+	// at 12 kHz is still honoured once it later decimates.
+	if (fir_hist_reset_pending.exchange(0, std::memory_order_acquire))
+	{
+		for (int i = 0; i < FIR_TAPS - 1; i++)
+		{
+			fir_histL[i] = 0.0f;
+			fir_histR[i] = 0.0f;
+		}
+	}
+
 	if (decim <= 1)
 	{
 		// Fast path: 12 kHz native, filtering would hit the modem's
