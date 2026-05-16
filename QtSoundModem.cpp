@@ -5046,14 +5046,64 @@ void QtSoundModem::StartWatchdog()
 	 // teardown's release but not with these stores, leaving the
 	 // publication of the new QAudioSource not happens-before the
 	 // worker's read.
-	 QMutexLocker locker(&s_audioMutex);
-	 m_audioInput = new QAudioSource(deviceInfo, format, this);
-	 connect(m_audioInput, &QAudioSource::stateChanged, this, &QtSoundModem::audioInStateChanged);
+	 bool startFailed = false;
+	 QAudio::Error startErr = QAudio::NoError;
+	 {
+		 QMutexLocker locker(&s_audioMutex);
+		 m_audioInput = new QAudioSource(deviceInfo, format, this);
+		 connect(m_audioInput, &QAudioSource::stateChanged, this, &QtSoundModem::audioInStateChanged);
 
-	 // Buffer size scales with rate so PollQSound still gets ~340 ms
-	 // of headroom before overrun.
-	 m_audioInput->setBufferSize(16384 * g_audioInputDecim);
-	 in = m_audioInput->start();
+		 // Buffer size scales with rate so PollQSound still gets ~340 ms
+		 // of headroom before overrun.
+		 m_audioInput->setBufferSize(16384 * g_audioInputDecim);
+		 in = m_audioInput->start();
+
+		 // QAudioSource::start() returns nullptr (and/or sets a non-NoError
+		 // error) when CoreAudio refuses the stream — device grabbed
+		 // exclusively, HAL format mismatch slipping past
+		 // isFormatSupported, permission revoked mid-session. The return
+		 // value was previously ignored: PollQSound's `in == nullptr`
+		 // guard then silently disabled Rx with no log and no dialog, so
+		 // the operator just saw a dead waterfall. Detect it here; the
+		 // dialog itself is shown after the lock is dropped (a modal
+		 // QMessageBox spins the event loop — same reason the REFUSED
+		 // dialog above runs outside s_audioMutex).
+		 startErr = m_audioInput->error();
+		 if (in == nullptr || startErr != QAudio::NoError)
+		 {
+			 startFailed = true;
+			 disconnect(m_audioInput, &QAudioSource::stateChanged,
+				 this, &QtSoundModem::audioInStateChanged);
+			 m_audioInput->stop();
+			 m_audioInput->deleteLater();
+			 m_audioInput = nullptr;
+			 in = nullptr;
+		 }
+	 }
+
+	 if (startFailed)
+	 {
+		 Debugprintf("REFUSED: input device '%s' QAudioSource::start() "
+			 "failed (error %d); Rx disabled for this device.",
+			 deviceInfo.description().toUtf8().constData(),
+			 (int)startErr);
+
+		 // Per-device gate, same as the format-refusal path: warn once
+		 // per device so a wedged device doesn't spam modal dialogs.
+		 const QByteArray deviceKey = deviceInfo.id();
+		 if (s_lastWarnedInDev != deviceKey)
+		 {
+			 s_lastWarnedInDev = deviceKey;
+			 QMessageBox::warning(this, tr("Audio input not supported"),
+				 tr("The input device \"%1\" could not be started "
+					"(audio system error %2). Decoding has been disabled "
+					"for this device.\n\nTry another input, or reconnect "
+					"the device and reselect it in the Devices dialog.")
+				 .arg(deviceInfo.description())
+				 .arg((int)startErr));
+		 }
+		 return;
+	 }
 
 	 // A successful open closes the warning gate — if this same device
 	 // later goes back to a refusable rate (or a different bad device
