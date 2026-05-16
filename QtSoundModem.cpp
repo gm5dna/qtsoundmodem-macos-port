@@ -4334,7 +4334,27 @@ void QtSoundModem::StartWatchdog()
 	 case QAudio::StoppedState:
 		 if (m_audioInput->error() != QAudio::NoError)
 		 {
-			 // Error handling
+			 // Source errored out mid-Rx (USB unplug, CoreAudio
+			 // device-lost, rate change rejected, etc). Before this
+			 // the branch was empty, so the failure mode was a
+			 // completely silent Rx death — PollQSound just keeps
+			 // returning early on the null/!in guard with no trace.
+			 // Log so the wedge is diagnosable; mirror of the
+			 // audioOutStateChanged StoppedState+error fix.
+			 //
+			 // We deliberately do NOT null `in` / m_audioInput here.
+			 // The QAudioSource::stateChanged connect is made before
+			 // m_audioInput->start(), and start() is called while
+			 // initializeAudioIn holds s_audioMutex; a direct-connection
+			 // emission would re-enter this slot with that mutex held,
+			 // so taking s_audioMutex here could self-deadlock the
+			 // non-recursive QMutex. Genuine device removal is already
+			 // handled by onAudioDevicesChanged (stop + null under the
+			 // mutex, with inDeviceInfo cleared to stop the reopen
+			 // loop); this handler only needs to make a transient
+			 // source error observable.
+			 Debugprintf("audioInStateChanged: source stopped with error %d — Rx halted",
+				 (int)m_audioInput->error());
 		 }
 		 else {
 			 // Finished recording
