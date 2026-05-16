@@ -5491,6 +5491,35 @@ extern "C" void decimateAudioToModem(const short * src, int decim, short * dst)
 		return;
 	}
 
+	if (fir_designed_rate == 0)
+	{
+		// Coefficients have never been designed (no aaFilterInit call
+		// on this caller's path). Convolving with the zero-initialised
+		// fir_coeffs[] would emit pure silence and kill every
+		// co-running FSK channel that item-5 routes through here. On
+		// the macOS port both capture entry points — Qt
+		// initializeAudioIn and the debugDecodeWav (--decode-wav*)
+		// harness — call aaFilterInit before any BufferFull, so this
+		// never fires there; it is a safety net for the non-Qt
+		// capture paths (Linux ALSA / Windows WaveOut) that don't.
+		// Degrade to the legacy crude every-`decim` stereo pick:
+		// aliased, but audible and decodable — strictly better than
+		// silence. (Codex second-reviewer catch on BUG-rx-audit
+		// item 5.)
+		static int warnedNoFir = 0;
+		if (!warnedNoFir) {
+			warnedNoFir = 1;
+			Debugprintf("decimateAudioToModem: FIR not designed "
+				"(aaFilterInit not called) — using crude decimation");
+		}
+		for (int i = 0; i < 512; i++)
+		{
+			dst[i * 2]     = src[i * decim * 2];
+			dst[i * 2 + 1] = src[i * decim * 2 + 1];
+		}
+		return;
+	}
+
 	const int inFrames = 512 * decim;
 
 	// Working buffer: history (FIR_TAPS-1 frames) + current chunk.
@@ -5698,11 +5727,13 @@ extern "C" void PollQSound()
 
 #if defined(Q_OS_MACOS)
 		// Dump BEFORE ProcessNewSamples. BufferFull mutates the input
-		// buffer in place on the using48000=1 path (sm_main.c:1003-1006
-		// rewrites the first quarter of Samples[] with the downsampled
-		// 12 kHz frames it just produced), so dumping after would
-		// capture a hybrid of downsampled-leading-frames and
-		// raw-trailing-frames at a 48 kHz sample-rate header — useless.
+		// buffer in place on the using48000=1 path (its 48->12 kHz
+		// reduction rewrites the first quarter of Samples[] with the
+		// downsampled 12 kHz frames it just produced — see
+		// sm_main.c::BufferFull, the `if (using48000)` block), so
+		// dumping after would capture a hybrid of
+		// downsampled-leading-frames and raw-trailing-frames at a
+		// 48 kHz sample-rate header — useless.
 		// The decimated path is safe in either order (BufferFull doesn't
 		// touch the buffer when using48000=0), but doing the dump
 		// uniformly up front keeps the rule simple.

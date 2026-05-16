@@ -67,6 +67,12 @@ int debugmode = 0;
 extern float src_buf[5][2048];
 extern Byte RCVR[5];
 
+// Shared windowed-sinc decimator (defined extern "C" in
+// QtSoundModem.cpp). Reused by the using48000 48->12 kHz step in
+// BufferFull so co-running FSK channels get an anti-aliased stream
+// instead of crude every-4th sub-sampling. See BUG-rx-audit item 5.
+extern void decimateAudioToModem(const short * src, int decim, short * dst);
+
 int SatelliteMode = 0;
 
 int UDPServerPort = 8884;
@@ -883,6 +889,17 @@ void BufferFull(short * Samples, int nSamples)			// These are Stereo Samples
 	short * data1;
 	short * data2 = 0;
 
+	// Entry frame count, captured before anything can mutate the
+	// nSamples parameter. The MODE_ARDOP branch below does an
+	// in-place nSamples /= 4 inside the per-channel loop, so by the
+	// time the using48000 48->12 kHz reduction runs nSamples may
+	// already be quartered. The FIR-decimation guard there must key
+	// off the true incoming chunk size, not the possibly-mangled
+	// nSamples, or an ARDOP-plus-RUH session would misroute a real
+	// native 48 kHz chunk into the crude fallback. See BUG-rx-audit
+	// item 5.
+	const int entryNSamples = nSamples;
+
 	// if UDP server active send as UDP Datagram
 
 	if (UDPServ)	// Extract just left
@@ -991,19 +1008,55 @@ void BufferFull(short * Samples, int nSamples)			// These are Stereo Samples
 
 		if (using48000)
 		{
-			i1 = 0;
-			j = 0;
-
-			//	Need to downsample 48K to 12K
-			//	Try just skipping 3 samples	
-
-			nSamples /= 4;
-
-			for (i = 0; i < nSamples; i++)
+			// 48 kHz -> 12 kHz for the FSK src_buf extraction below.
+			// The old code took every 4th stereo frame (i1 += 8) with
+			// no anti-alias filter, so any energy in 6..24 kHz folds
+			// straight into the 0..6 kHz modem band. With a RUH modem
+			// forcing using48000, a co-running 1200 AFSK / 300 BPSK
+			// channel sees a 9.8 / 10.8 kHz birdie land exactly on its
+			// 2200 / 1200 Hz tones. Route through the same windowed-
+			// sinc FIR the non-RUH PollQSound path uses
+			// (decimateAudioToModem; it carries fir_hist continuity
+			// across chunks). RUH itself already consumed the
+			// native-rate Samples in the snd_ch loop above
+			// (dw9600ProcessSample), so filtering here only affects
+			// the FSK extraction, not RUH. See BUG-rx-audit item 5.
+			if (entryNSamples == 4 * rx_bufsize)
 			{
-				Samples[j++] = Samples[i1];
-				Samples[j++] = Samples[i1 + 1];
-				i1 += 8;
+				// Genuine native 48 kHz chunk: PollQSound's
+				// nativeRUHPath always hands 4*rx_bufsize (2048)
+				// stereo frames, which decimateAudioToModem reduces
+				// to exactly rx_bufsize (512) stereo frames.
+				// Guarded on entryNSamples (not nSamples) so a
+				// co-running ARDOP channel's in-place nSamples /= 4
+				// can't misroute this real native chunk.
+				static short aaTmp[2 * 512];	// 512 stereo frames
+				decimateAudioToModem(Samples, 4, aaTmp);
+				memcpy(Samples, aaTmp, sizeof(aaTmp));
+				nSamples = rx_bufsize;
+			}
+			else
+			{
+				// Misconfigured: a RUH modem is selected but the
+				// device is not at 48 kHz, so PollQSound already
+				// FIR-decimated to 12 kHz and this buffer is only
+				// rx_bufsize frames. decimateAudioToModem assumes a
+				// 4*rx_bufsize input, so calling it here would read
+				// past the buffer. Decimating 12 kHz again is wrong
+				// either way (RUH at non-48 kHz never worked — out of
+				// scope); keep the legacy crude every-4th purely so
+				// this path can't over-read.
+				i1 = 0;
+				j = 0;
+
+				nSamples /= 4;
+
+				for (i = 0; i < nSamples; i++)
+				{
+					Samples[j++] = Samples[i1];
+					Samples[j++] = Samples[i1 + 1];
+					i1 += 8;
+				}
 			}
 		}
 
