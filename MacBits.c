@@ -919,6 +919,17 @@ void debugDecodeWavNative(const char * path)
 		return;
 	}
 
+	// Design the antialias FIR for 48 kHz. The live Qt path runs this
+	// from initializeAudioIn; the non-native debugDecodeWav runs it
+	// too. Without it here, BufferFull's using48000 48->12 kHz step
+	// (which now routes co-running FSK channels through
+	// decimateAudioToModem) would hit the fir_designed_rate==0
+	// safety fallback and silently keep the old aliased every-4th
+	// pick — so --decode-wav-native RUH+FSK tests would not exercise
+	// the BUG-rx-audit item-5 anti-aliasing at all. (Codex
+	// second-reviewer catch.)
+	aaFilterInit(48000);
+
 	// Force one BPF/TXBPF coefficient computation per channel before
 	// the first sample lands in BufferFull (same rationale as
 	// debugDecodeWav).
