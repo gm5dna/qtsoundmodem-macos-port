@@ -37,6 +37,9 @@
     <property name="text">
      <string>Low Tone</string>
     </property>
+    <property name="toolTip">
+     <string>Send a continuous low (mark) tone on channel A — keys PTT until you press Stop. For receiver alignment.</string>
+    </property>
    </widget>
    <widget class="QPushButton" name="High_A">
     <property name="geometry">
@@ -49,6 +52,9 @@
     </property>
     <property name="text">
      <string>High Tone</string>
+    </property>
+    <property name="toolTip">
+     <string>Send a continuous high (space) tone on channel A — keys PTT until you press Stop. Pair with Low Tone to verify both produce comparable receive levels.</string>
     </property>
    </widget>
    <widget class="QPushButton" name="Both_A">
@@ -63,6 +69,9 @@
     <property name="text">
      <string>Both Tones</string>
     </property>
+    <property name="toolTip">
+     <string>Alternate mark/space tones on channel A at the channel's baud rate — full TX exercise. Use to set transmit deviation.</string>
+    </property>
    </widget>
    <widget class="QPushButton" name="Stop_A">
     <property name="geometry">
@@ -75,6 +84,9 @@
     </property>
     <property name="text">
      <string>Stop TX</string>
+    </property>
+    <property name="toolTip">
+     <string>Stop calibration transmission on channel A.</string>
     </property>
    </widget>
   </widget>
@@ -105,6 +117,9 @@
     <property name="text">
      <string>Low Tone</string>
     </property>
+    <property name="toolTip">
+     <string>Send a continuous low (mark) tone on channel B — keys PTT until you press Stop. For receiver alignment.</string>
+    </property>
    </widget>
    <widget class="QPushButton" name="High_B">
     <property name="geometry">
@@ -117,6 +132,9 @@
     </property>
     <property name="text">
      <string>High Tone</string>
+    </property>
+    <property name="toolTip">
+     <string>Send a continuous high (space) tone on channel B — keys PTT until you press Stop. Pair with Low Tone to verify both produce comparable receive levels.</string>
     </property>
    </widget>
    <widget class="QPushButton" name="Both_B">
@@ -131,6 +149,9 @@
     <property name="text">
      <string>Both Tones</string>
     </property>
+    <property name="toolTip">
+     <string>Alternate mark/space tones on channel B at the channel's baud rate — full TX exercise. Use to set transmit deviation.</string>
+    </property>
    </widget>
    <widget class="QPushButton" name="Stop_B">
     <property name="geometry">
@@ -143,6 +164,9 @@
     </property>
     <property name="text">
      <string>Stop TX</string>
+    </property>
+    <property name="toolTip">
+     <string>Stop calibration transmission on channel B.</string>
     </property>
    </widget>
   </widget>
@@ -170,6 +194,9 @@
     <property name="text">
      <string>High Tone</string>
     </property>
+    <property name="toolTip">
+     <string>Send a continuous high (space) tone on channel C — keys PTT until you press Stop. Pair with Low Tone to verify both produce comparable receive levels.</string>
+    </property>
    </widget>
    <widget class="QPushButton" name="Both_C">
     <property name="geometry">
@@ -182,6 +209,9 @@
     </property>
     <property name="text">
      <string>Both Tones</string>
+    </property>
+    <property name="toolTip">
+     <string>Alternate mark/space tones on channel C at the channel's baud rate — full TX exercise. Use to set transmit deviation.</string>
     </property>
    </widget>
    <widget class="QPushButton" name="Low_C">
@@ -196,6 +226,9 @@
     <property name="text">
      <string>Low Tone</string>
     </property>
+    <property name="toolTip">
+     <string>Send a continuous low (mark) tone on channel C — keys PTT until you press Stop. For receiver alignment.</string>
+    </property>
    </widget>
    <widget class="QPushButton" name="Stop_C">
     <property name="geometry">
@@ -208,6 +241,9 @@
     </property>
     <property name="text">
      <string>Stop TX</string>
+    </property>
+    <property name="toolTip">
+     <string>Stop calibration transmission on channel C.</string>
     </property>
    </widget>
   </widget>
@@ -235,6 +271,9 @@
     <property name="text">
      <string>High Tone</string>
     </property>
+    <property name="toolTip">
+     <string>Send a continuous high (space) tone on channel D — keys PTT until you press Stop. Pair with Low Tone to verify both produce comparable receive levels.</string>
+    </property>
    </widget>
    <widget class="QPushButton" name="Both_D">
     <property name="geometry">
@@ -247,6 +286,9 @@
     </property>
     <property name="text">
      <string>Both Tones</string>
+    </property>
+    <property name="toolTip">
+     <string>Alternate mark/space tones on channel D at the channel's baud rate — full TX exercise. Use to set transmit deviation.</string>
     </property>
    </widget>
    <widget class="QPushButton" name="Low_D">
@@ -261,6 +303,9 @@
     <property name="text">
      <string>Low Tone</string>
     </property>
+    <property name="toolTip">
+     <string>Send a continuous low (mark) tone on channel D — keys PTT until you press Stop. For receiver alignment.</string>
+    </property>
    </widget>
    <widget class="QPushButton" name="Stop_D">
     <property name="geometry">
@@ -273,6 +318,9 @@
     </property>
     <property name="text">
      <string>Stop TX</string>
+    </property>
+    <property name="toolTip">
+     <string>Stop calibration transmission on channel D.</string>
     </property>
    </widget>
   </widget>
@@ -287,6 +335,9 @@
    </property>
    <property name="text">
     <string>10 secs 1500Hz Tone</string>
+   </property>
+   <property name="toolTip">
+    <string>Send a 10-second 1500 Hz tone — quick soundcard output-level check.</string>
    </property>
   </widget>
  </widget>

@@ -48,8 +48,13 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 #include <QScrollBar>
 #include <QFontDatabase>
 #include <QFile>
+#include <QCoreApplication>
+#include <QDesktopServices>
+#include <QUrl>
 #include <QMutex>
 #include <QStyleHints>
+#include <atomic>
+#include <QWhatsThis>
 
 #include "UZ7HOStuff.h"
 
@@ -783,6 +788,7 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	// Set up Menus
 
 	setupMenu = ui.menuBar->addMenu(tr("Settings"));
+	setupMenu->setToolTipsVisible(true);
 
 	actDevices = new QAction("Setup Devices", this);
 	// Qt's macOS heuristic auto-moves QActions whose title contains
@@ -792,6 +798,8 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	// them under the Settings menu where the code added them.
 	// Force NoRole on every action that would otherwise be stolen.
 	actDevices->setMenuRole(QAction::NoRole);
+	actDevices->setToolTip(tr("Open the Setup Devices dialog: sound card, audio backend, modem channel routing, server ports, PTT method."));
+	actDevices->setWhatsThis(tr("<b>Setup Devices</b><br/>Configures the sound card (RX/TX device), audio backend, modem-to-channel routing, AGW/KISS/UDP/RHP/6Pack/MGMT server ports, and the PTT method (RTS, DTR, CAT, GPIO, CM108, Hamlib, FLRig). Save persists changes; the audio backend and server ports take effect on next start, while PTT changes apply immediately."));
 	setupMenu->addAction(actDevices);
 
 	connect(actDevices, SIGNAL(triggered()), this, SLOT(clickedSlot()));
@@ -799,6 +807,8 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	actModems = new QAction("Setup Modems", this);
 	actModems->setMenuRole(QAction::NoRole);
 	actModems->setObjectName("actModems");
+	actModems->setToolTip(tr("Open the Setup Modems dialog: per-channel TX timing, FX.25, IL2P, RSID, AX.25 parameters, filters."));
+	actModems->setWhatsThis(tr("<b>Setup Modems</b><br/>Per-channel modem configuration spread across four tabs (A/B/C/D). Controls TX delay/tail, FX.25 and IL2P framing, RSID transmission, AX.25 timers (FRACK, MaxFrame, Retries), digipeater calls, filter widths, and CWID."));
 	setupMenu->addAction(actModems);
 
 	connect(actModems, SIGNAL(triggered()), this, SLOT(clickedSlot()));
@@ -811,28 +821,67 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	actMintoTray = setupMenu->addAction("Minimize to Tray", this, SLOT(MinimizetoTray()));
 	actMintoTray->setCheckable(1);
 	actMintoTray->setChecked(MintoTray);
+	actMintoTray->setToolTip(tr("Send the window to the system tray instead of the dock when minimised."));
 #endif
 
 	viewMenu = ui.menuBar->addMenu(tr("&View"));
+	viewMenu->setToolTipsVisible(true);
 
 	actWaterfall1 = setupMenuLine(viewMenu, (char *)"First waterfall", this, Firstwaterfall);
 	actWaterfall2 = setupMenuLine(viewMenu, (char *)"Second Waterfall", this, Secondwaterfall);
 	actConstellation = setupMenuLine(viewMenu, (char *)"PSK Constellation", this, PSKWindow);
+	// setupMenuLine always returns a fresh QAction (new throws on failure);
+	// no null guard needed.
+	actWaterfall1->setToolTip(tr("Show or hide the upper waterfall pane."));
+	actWaterfall1->setWhatsThis(tr("<b>First waterfall</b><br/>Toggles the upper of the two waterfall displays. Stored as <tt>Window/Waterfall1</tt>."));
+	actWaterfall2->setToolTip(tr("Show or hide the lower waterfall pane."));
+	actWaterfall2->setWhatsThis(tr("<b>Second Waterfall</b><br/>Toggles the lower waterfall display. Stored as <tt>Window/Waterfall2</tt>."));
+	actConstellation->setToolTip(tr("Show or hide the PSK constellation diagram window."));
+	actConstellation->setWhatsThis(tr("<b>PSK Constellation</b><br/>Toggles a separate window showing per-channel PSK constellation diagrams — useful for tuning PSK signals. Stored as <tt>Window/PSKWindow</tt>."));
 
 	// macOS QMenuBar only renders QMenu submenus at the top level —
 	// QActions added directly via addAction() are silently dropped.
 	// Group action-style entries under a real submenu so they appear.
 	QMenu *toolsMenu = ui.menuBar->addMenu(tr("&Tools"));
+	toolsMenu->setToolTipsVisible(true);
 
 	actCalib = toolsMenu->addAction("&Calibration");
 	actCalib->setMenuRole(QAction::NoRole);
+	actCalib->setToolTip(tr("Open the Calibration dialog: per-channel mark/space tones for receiver alignment and TX level setup."));
+	actCalib->setWhatsThis(tr("<b>Calibration</b><br/>Opens a dialog with per-channel Low/High/Both/Stop buttons and a 10-second 1500 Hz tone — for setting transmit deviation and verifying receiver alignment."));
 	connect(actCalib, SIGNAL(triggered()), this, SLOT(doCalibrate()));
 
-	actAbout = ui.menuBar->addAction("&About");
-	// About is fine to keep Qt's default TextHeuristicRole — the
-	// "About" text triggers the macOS-native heuristic that routes
-	// it into the application menu as "About QtSoundModem", where
-	// users expect it.
+	// Help menu — sits rightmost; on macOS the system Help slot picks it
+	// up automatically when the menu is titled "Help".
+	QMenu *helpMenu = ui.menuBar->addMenu(tr("&Help"));
+
+	// G8BPQ's cantab.net page is the authoritative QtSoundModem reference.
+	QAction *actG8BPQOnline = helpMenu->addAction(
+		tr("&G8BPQ Documentation (online)"));
+	actG8BPQOnline->setMenuRole(QAction::NoRole);
+	connect(actG8BPQOnline, &QAction::triggered, this, [] {
+		QDesktopServices::openUrl(QUrl(QStringLiteral(
+			"https://www.cantab.net/users/john.wiseman/Documents/QtSoundModem.html")));
+	});
+
+	helpMenu->addSeparator();
+
+	// "What's This?" mode — clicking enters the standard Qt hover-help
+	// mode. macOS does not show the title-bar "?" button, so a menu entry
+	// (and the Shift+F1 shortcut) is the only discoverable trigger.
+	QAction *actWhatsThis = helpMenu->addAction(tr("What's &This?"));
+	actWhatsThis->setShortcut(QKeySequence::WhatsThis);
+	actWhatsThis->setMenuRole(QAction::NoRole);
+	connect(actWhatsThis, &QAction::triggered, this,
+		[] { QWhatsThis::enterWhatsThisMode(); });
+
+	helpMenu->addSeparator();
+
+	actAbout = helpMenu->addAction(tr("&About QtSoundModem"));
+	// AboutRole routes this entry into the macOS App menu's "About
+	// QtSoundModem" slot, so it disappears from the Help menu on macOS
+	// and lands where users expect. On other platforms it stays under Help.
+	actAbout->setMenuRole(QAction::AboutRole);
 	connect(actAbout, SIGNAL(triggered()), this, SLOT(doAbout()));
 
 	RXLevel = new QImage(150, 10, QImage::Format_RGB32);
@@ -3064,8 +3113,14 @@ void QtSoundModem::handleButton(int Port, int Type)
 
 void QtSoundModem::doAbout()
 {
-	QMessageBox::about(this, tr("About"),
-		tr("G8BPQ's port of UZ7HO's Soundmodem\n\nCopyright (C) 2019-2020 Andrei Kopanchuk UZ7HO"));
+	// QMessageBox::about renders rich text when the message contains
+	// HTML markup, so the cantab.net link is clickable.
+	QMessageBox::about(this, tr("About QtSoundModem"),
+		tr("<p>G8BPQ's port of UZ7HO's Soundmodem.</p>"
+		   "<p>Copyright (C) 2019-2020 Andrei Kopanchuk UZ7HO</p>"
+		   "<p>Authoritative documentation: "
+		   "<a href=\"https://www.cantab.net/users/john.wiseman/Documents/QtSoundModem.html\">"
+		   "G8BPQ — QtSoundModem</a></p>"));
 }
 
 void QtSoundModem::doCalibrate()
@@ -4206,6 +4261,22 @@ void QtSoundModem::StartWatchdog()
  // carry a `this`.
  static QMutex s_audioMutex;
 
+ // Set by closeQSound (GUI thread, capture teardown / device swap),
+ // consumed by PollQSound at entry on the worker thread. closeQSound
+ // tears down the QAudioSource but does NOT drain the accumulated
+ // capture Buffer, and the PollQSound decimation loop runs outside
+ // s_audioMutex by design (teardown responsiveness), so without this
+ // a back-to-back closeQSound()+initializeAudioIn() (the deviceaccept
+ // path) leaves stale old-stream bytes in Buffer plus a stale
+ // sub-frame carry. Those would: (a) prepend a stale tail to the new
+ // device's stream, and (b) let a stale chunk consume the deferred
+ // FIR-history reset before the new stream's first chunk. Dropping
+ // the buffered capture state on the worker thread — the sole owner
+ // of BufferLen and the carry — at the next poll closes both races
+ // without taking s_audioMutex over the hot decimation path. (Codex
+ // third-pass catch on items 6 and 7.)
+ static std::atomic<int> capture_reset_pending{0};
+
 #ifndef WIN32
  extern "C" int stricmp(char * pStr1, char *pStr2);
 #endif
@@ -4334,7 +4405,27 @@ void QtSoundModem::StartWatchdog()
 	 case QAudio::StoppedState:
 		 if (m_audioInput->error() != QAudio::NoError)
 		 {
-			 // Error handling
+			 // Source errored out mid-Rx (USB unplug, CoreAudio
+			 // device-lost, rate change rejected, etc). Before this
+			 // the branch was empty, so the failure mode was a
+			 // completely silent Rx death — PollQSound just keeps
+			 // returning early on the null/!in guard with no trace.
+			 // Log so the wedge is diagnosable; mirror of the
+			 // audioOutStateChanged StoppedState+error fix.
+			 //
+			 // We deliberately do NOT null `in` / m_audioInput here.
+			 // The QAudioSource::stateChanged connect is made before
+			 // m_audioInput->start(), and start() is called while
+			 // initializeAudioIn holds s_audioMutex; a direct-connection
+			 // emission would re-enter this slot with that mutex held,
+			 // so taking s_audioMutex here could self-deadlock the
+			 // non-recursive QMutex. Genuine device removal is already
+			 // handled by onAudioDevicesChanged (stop + null under the
+			 // mutex, with inDeviceInfo cleared to stop the reopen
+			 // loop); this handler only needs to make a transient
+			 // source error observable.
+			 Debugprintf("audioInStateChanged: source stopped with error %d — Rx halted",
+				 (int)m_audioInput->error());
 		 }
 		 else {
 			 // Finished recording
@@ -4373,7 +4464,15 @@ void QtSoundModem::StartWatchdog()
 		 // pointer makes the code misleading. Touched on the way past.
 		 if (m_audioOutput->error() != QAudio::NoError)
 		 {
-			 // Error handling
+			 // Sink errored out mid-Tx (USB unplug, CoreAudio device-lost,
+			 // rate change rejected, etc). Log so the wedge is diagnosable;
+			 // the sendSamplestoQSound state/error check + SoundFlush
+			 // 1 s timeout (MacBits.c) handles PTT release. Clear the
+			 // SoundIsPlaying flag here too in case sendSamplestoQSound
+			 // wasn't actively waiting when the state changed.
+			 Debugprintf("audioOutStateChanged: sink stopped with error %d — Tx aborted",
+				 (int)m_audioOutput->error());
+			 SoundIsPlaying = 0;
 		 }
 		 else
 		 {
@@ -4666,6 +4765,13 @@ void QtSoundModem::StartWatchdog()
 				 m_audioInput->deleteLater();
 				 m_audioInput = nullptr;
 			 }
+			 // Hot-unplug tears the input down here, NOT via
+			 // closeQSound, and the device is auto-reopened on replug.
+			 // Request the same capture-state drop so a half-chunk left
+			 // in Buffer (plus any sub-frame carry) from the vanished
+			 // device can't be prepended to the re-opened stream.
+			 // (Codex fourth-pass catch on item 6.)
+			 capture_reset_pending.store(1, std::memory_order_release);
 			 inDeviceInfo = QAudioDevice();
 		 }
 		 if (outGone)
@@ -4994,14 +5100,64 @@ void QtSoundModem::StartWatchdog()
 	 // teardown's release but not with these stores, leaving the
 	 // publication of the new QAudioSource not happens-before the
 	 // worker's read.
-	 QMutexLocker locker(&s_audioMutex);
-	 m_audioInput = new QAudioSource(deviceInfo, format, this);
-	 connect(m_audioInput, &QAudioSource::stateChanged, this, &QtSoundModem::audioInStateChanged);
+	 bool startFailed = false;
+	 QAudio::Error startErr = QAudio::NoError;
+	 {
+		 QMutexLocker locker(&s_audioMutex);
+		 m_audioInput = new QAudioSource(deviceInfo, format, this);
+		 connect(m_audioInput, &QAudioSource::stateChanged, this, &QtSoundModem::audioInStateChanged);
 
-	 // Buffer size scales with rate so PollQSound still gets ~340 ms
-	 // of headroom before overrun.
-	 m_audioInput->setBufferSize(16384 * g_audioInputDecim);
-	 in = m_audioInput->start();
+		 // Buffer size scales with rate so PollQSound still gets ~340 ms
+		 // of headroom before overrun.
+		 m_audioInput->setBufferSize(16384 * g_audioInputDecim);
+		 in = m_audioInput->start();
+
+		 // QAudioSource::start() returns nullptr (and/or sets a non-NoError
+		 // error) when CoreAudio refuses the stream — device grabbed
+		 // exclusively, HAL format mismatch slipping past
+		 // isFormatSupported, permission revoked mid-session. The return
+		 // value was previously ignored: PollQSound's `in == nullptr`
+		 // guard then silently disabled Rx with no log and no dialog, so
+		 // the operator just saw a dead waterfall. Detect it here; the
+		 // dialog itself is shown after the lock is dropped (a modal
+		 // QMessageBox spins the event loop — same reason the REFUSED
+		 // dialog above runs outside s_audioMutex).
+		 startErr = m_audioInput->error();
+		 if (in == nullptr || startErr != QAudio::NoError)
+		 {
+			 startFailed = true;
+			 disconnect(m_audioInput, &QAudioSource::stateChanged,
+				 this, &QtSoundModem::audioInStateChanged);
+			 m_audioInput->stop();
+			 m_audioInput->deleteLater();
+			 m_audioInput = nullptr;
+			 in = nullptr;
+		 }
+	 }
+
+	 if (startFailed)
+	 {
+		 Debugprintf("REFUSED: input device '%s' QAudioSource::start() "
+			 "failed (error %d); Rx disabled for this device.",
+			 deviceInfo.description().toUtf8().constData(),
+			 (int)startErr);
+
+		 // Per-device gate, same as the format-refusal path: warn once
+		 // per device so a wedged device doesn't spam modal dialogs.
+		 const QByteArray deviceKey = deviceInfo.id();
+		 if (s_lastWarnedInDev != deviceKey)
+		 {
+			 s_lastWarnedInDev = deviceKey;
+			 QMessageBox::warning(this, tr("Audio input not supported"),
+				 tr("The input device \"%1\" could not be started "
+					"(audio system error %2). Decoding has been disabled "
+					"for this device.\n\nTry another input, or reconnect "
+					"the device and reselect it in the Devices dialog.")
+				 .arg(deviceInfo.description())
+				 .arg((int)startErr));
+		 }
+		 return;
+	 }
 
 	 // A successful open closes the warning gate — if this same device
 	 // later goes back to a refusable rate (or a different bad device
@@ -5147,6 +5303,15 @@ void QtSoundModem::StartWatchdog()
 		 m_audioOutput->deleteLater();
 		 m_audioOutput = nullptr;
 	 }
+
+	 // Discard whatever the worker accumulated for the old stream:
+	 // its leftover Buffer bytes and sub-frame carry must not bleed
+	 // into the replacement device (deviceaccept calls closeQSound()
+	 // then initializeAudioIn() back-to-back, so the worker may never
+	 // observe the null window). Done as a flag consumed by PollQSound
+	 // on the worker thread — the sole writer of BufferLen / the carry
+	 // — so we don't take s_audioMutex over the decimation loop.
+	 capture_reset_pending.store(1, std::memory_order_release);
  }
 
  extern "C" void txSleep(int mS);
@@ -5180,18 +5345,49 @@ void QtSoundModem::StartWatchdog()
 	 Debugprintf("ToSend %d Space %d Period Size %d chunks %d ", n * 4, space, size, chunks);
 
 	 // We are passed Stereo 16 bit samples. I think n is number of samples so send n x 4
-
+	 //
+	 // The busy-wait below previously had no error / state check and no
+	 // timeout: if QAudioSink entered StoppedState with a non-NoError
+	 // status while a Tx was in flight (USB unplug mid-Tx, CoreAudio
+	 // device-lost, sample-rate change rejected by the device), the
+	 // worker spun forever in txSleep(10). PTT was keyed before the
+	 // first sample (SMMain.c:873) and RadioPTT(Chan, 0) was never
+	 // reached. Radio sat keyed on dead air until the user killed the
+	 // app.
+	 //
+	 // Now: exit the loop if the sink reports StoppedState / an error,
+	 // or if 2 s elapses without bytesFree() reaching n (a backstop for
+	 // the device-wedge case where state() never advances). Returning
+	 // early lets SendtoCard return; SoundFlush's IdleState wait fires
+	 // its 1 s timeout, clears SoundIsPlaying, and SMMain.c's DoTX
+	 // drops PTT cleanly on the next pass.
+	 const unsigned int kStuckMs = 2000;
+	 unsigned int waitStartedMs = getTicks();
 	 for (;;)
 	 {
 		 int frames;
+		 QAudio::State state;
+		 QAudio::Error err;
 		 {
 			 QMutexLocker locker(&s_audioMutex);
 			 if (!m_audioOutput || !out)
 				 return buf;
 			 frames = m_audioOutput->bytesFree() / 4;
+			 state = m_audioOutput->state();
+			 err = m_audioOutput->error();
 		 }
 		 if (frames >= n)
 			 break;
+		 if (state == QAudio::StoppedState || err != QAudio::NoError)
+		 {
+			 Debugprintf("sendSamplestoQSound: sink stopped (state=%d err=%d) — aborting Tx", (int)state, (int)err);
+			 return buf;
+		 }
+		 if (getTicks() - waitStartedMs > kStuckMs)
+		 {
+			 Debugprintf("sendSamplestoQSound: bytesFree wedged at %d after %u ms (need %d) — aborting Tx", frames, getTicks() - waitStartedMs, n);
+			 return buf;
+		 }
 		 txSleep(10);
 		 Debugprintf("Space %d", frames);
 	 }
@@ -5349,6 +5545,17 @@ static int fir_designed_rate = 0;  // 0 = needs design
 static float fir_histL[FIR_TAPS - 1];
 static float fir_histR[FIR_TAPS - 1];
 
+// Set by aaFilterInit (GUI thread, on every capture (re)open),
+// consumed by decimateAudioToModem (worker thread, the sole owner of
+// fir_histL/R). aaFilterInit must NOT zero the history itself: it
+// runs outside s_audioMutex, the decimation loop in PollQSound also
+// runs outside it, so a direct clear races the in-flight decimator —
+// whose trailing-history memcpy would re-fill the just-cleared arrays
+// with the previous stream's tail and defeat the flush. Deferring the
+// flush to the worker thread that owns the history removes the race
+// entirely. (Codex second-reviewer catch on BUG-rx-audit item 7.)
+static std::atomic<int> fir_hist_reset_pending{0};
+
 extern "C" void aaFilterInit(int sampleRateIn)
 {
 	// Defensive clamp: a misbehaving device negotiating 0 or a
@@ -5359,8 +5566,25 @@ extern "C" void aaFilterInit(int sampleRateIn)
 	if (sampleRateIn < 12000)
 		sampleRateIn = 12000;
 
+	// Request a decimator-history flush on every (re)open, even when
+	// the rate is unchanged. aaFilterInit is called from
+	// initializeAudioIn on every device open; the coefficient
+	// recompute below is correctly gated on a rate change (it is the
+	// expensive part and is otherwise rate-invariant), but the
+	// FIR_TAPS-1-sample history tail belongs to the *previous*
+	// stream. A same-rate device swap — close then reopen the same
+	// device, or a hot-replug at an unchanged rate — used to hit the
+	// rate-match early-return and carry ~2.6 ms (126 samples at
+	// 48 kHz) of the old stream into the first chunk of the new one,
+	// a small but real discontinuity / click at the demod input.
+	//
+	// The actual zeroing is deferred to decimateAudioToModem on the
+	// worker thread (see fir_hist_reset_pending) so it can't race the
+	// in-flight decimator.
+	fir_hist_reset_pending.store(1, std::memory_order_release);
+
 	if (sampleRateIn == fir_designed_rate)
-		return;  // already designed for this rate
+		return;  // coefficients already valid for this rate
 	fir_designed_rate = sampleRateIn;
 
 	const int M = FIR_TAPS - 1;  // 126
@@ -5382,14 +5606,6 @@ extern "C" void aaFilterInit(int sampleRateIn)
 	for (int n = 0; n < FIR_TAPS; n++)
 		fir_coeffs[n] = (float)(fir_coeffs[n] / sum);
 
-	// Reset history on rate change so a stale tail from the previous
-	// rate doesn't bleed into the first few output frames.
-	for (int i = 0; i < FIR_TAPS - 1; i++)
-	{
-		fir_histL[i] = 0.0f;
-		fir_histR[i] = 0.0f;
-	}
-
 	Debugprintf("Antialias FIR: %d taps, cutoff %.0f Hz at %d Hz input "
 		"(normalised fc=%.4f, group delay %d samples)",
 		FIR_TAPS, fc * sampleRateIn, sampleRateIn, fc, M / 2);
@@ -5409,6 +5625,22 @@ static inline short fir_clip16(float x)
 // harness exercises the same DSP the live build does.
 extern "C" void decimateAudioToModem(const short * src, int decim, short * dst)
 {
+	// Honour a pending history flush requested by aaFilterInit on a
+	// capture (re)open. Done here, on the sole thread that reads and
+	// writes fir_histL/R, so the flush cannot race the decimator's
+	// own trailing-history save. exchange() consumes the request
+	// exactly once even across the early-return paths below (decim<=1
+	// / decim>8 / undesigned), so a reset issued while the device is
+	// at 12 kHz is still honoured once it later decimates.
+	if (fir_hist_reset_pending.exchange(0, std::memory_order_acquire))
+	{
+		for (int i = 0; i < FIR_TAPS - 1; i++)
+		{
+			fir_histL[i] = 0.0f;
+			fir_histR[i] = 0.0f;
+		}
+	}
+
 	if (decim <= 1)
 	{
 		// Fast path: 12 kHz native, filtering would hit the modem's
@@ -5429,6 +5661,35 @@ extern "C" void decimateAudioToModem(const short * src, int decim, short * dst)
 			Debugprintf("decimateAudioToModem: decim=%d > 8 unsupported; output silenced", decim);
 		}
 		memset(dst, 0, 512 * 2 * sizeof(short));
+		return;
+	}
+
+	if (fir_designed_rate == 0)
+	{
+		// Coefficients have never been designed (no aaFilterInit call
+		// on this caller's path). Convolving with the zero-initialised
+		// fir_coeffs[] would emit pure silence and kill every
+		// co-running FSK channel that item-5 routes through here. On
+		// the macOS port both capture entry points — Qt
+		// initializeAudioIn and the debugDecodeWav (--decode-wav*)
+		// harness — call aaFilterInit before any BufferFull, so this
+		// never fires there; it is a safety net for the non-Qt
+		// capture paths (Linux ALSA / Windows WaveOut) that don't.
+		// Degrade to the legacy crude every-`decim` stereo pick:
+		// aliased, but audible and decodable — strictly better than
+		// silence. (Codex second-reviewer catch on BUG-rx-audit
+		// item 5.)
+		static int warnedNoFir = 0;
+		if (!warnedNoFir) {
+			warnedNoFir = 1;
+			Debugprintf("decimateAudioToModem: FIR not designed "
+				"(aaFilterInit not called) — using crude decimation");
+		}
+		for (int i = 0; i < 512; i++)
+		{
+			dst[i * 2]     = src[i * decim * 2];
+			dst[i * 2 + 1] = src[i * decim * 2 + 1];
+		}
 		return;
 	}
 
@@ -5504,14 +5765,54 @@ extern "C" void PollQSound()
 	// frequency, not a property of the data path.
 	const bool monoInput = (g_audioInputChannelCount == 1);
 
+	// Frame size in the raw, pre-mono-expansion byte domain: one
+	// int16 for mono input, an L/R pair for stereo.
+	const qint64 frameBytes =
+		monoInput ? (qint64)sizeof(short) : (qint64)(2 * sizeof(short));
+
+	// Carry for a sub-frame tail. QAudioSource delivers whole frames
+	// in practice, but QIODevice::read carries no such guarantee. If a
+	// backend ever returns a non-frame-aligned byte count, dropping
+	// the remainder does NOT restore alignment: the device's byte
+	// stream is contiguous, so its next bytes continue the same
+	// logical frame — discarding our side desyncs framing for the
+	// rest of the session. Instead hold the <frameBytes leftover here
+	// and prepend it to the next read so the device stream stays
+	// byte-contiguous. (Codex second-reviewer catch on
+	// BUG-rx-audit item 6.)
+	static char s_partialTail[4];   // frameBytes is at most 4
+	static int  s_partialTailLen = 0;
+
+	// Honour a capture-teardown request from closeQSound before doing
+	// anything with the buffer. Runs on the worker thread, the sole
+	// writer of BufferLen and the carry, so dropping them here is
+	// race-free. Discards stale old-stream bytes still queued in
+	// Buffer (teardown does not drain it) and any pending sub-frame
+	// tail, so a back-to-back device swap can neither prepend a stale
+	// carry to the new stream nor let a leftover old chunk consume
+	// the deferred FIR-history reset before the new stream's first
+	// chunk. The FIR flush itself is requested separately by
+	// aaFilterInit on the subsequent open.
+	if (capture_reset_pending.exchange(0, std::memory_order_acquire))
+	{
+		BufferLen = 0;
+		s_partialTailLen = 0;
+	}
+
 	qint64 x;
 	{
 		QMutexLocker locker(&s_audioMutex);
 		if (!m_audioInput)
+		{
+			s_partialTailLen = 0;   // stale across a device change
 			return;
+		}
 
 		if (in == nullptr)
+		{
+			s_partialTailLen = 0;
 			return;
+		}
 
 		// `size` is the post-expansion (stereo) byte budget. Mono reads
 		// half that and the expansion below fills in the missing L/R
@@ -5521,9 +5822,45 @@ extern "C" void PollQSound()
 		if (BufferLen + size > (int)sizeof(Buffer))
 			size = (int)sizeof(Buffer) - BufferLen;
 
-		const int requestSize = monoInput ? size / 2 : size;
-		x = in->read(&Buffer[BufferLen], requestSize);
+		// Prepend any carried sub-frame tail, then read after it so
+		// [carry][new bytes] reconstructs the device's contiguous
+		// stream. The read budget is reduced by the prepend so the
+		// post-expansion total still fits the overflow clamp.
+		if (s_partialTailLen > 0)
+			memcpy(&Buffer[BufferLen], s_partialTail, s_partialTailLen);
+
+		const int budget = (monoInput ? size / 2 : size) - s_partialTailLen;
+		const int requestSize = budget > 0 ? budget : 0;
+		x = in->read(&Buffer[BufferLen] + s_partialTailLen, requestSize);
 	}
+
+	if (x > 0)
+	{
+		// The carried bytes are now contiguous with the freshly read
+		// bytes and part of this chunk.
+		x += s_partialTailLen;
+		s_partialTailLen = 0;
+
+		const qint64 rem = x % frameBytes;
+		if (rem)
+		{
+			// Stash the trailing partial frame for the next call;
+			// process only the whole-frame prefix now.
+			static int warnedPartial = 0;
+			if (!warnedPartial)
+			{
+				warnedPartial = 1;
+				Debugprintf("PollQSound: backend returned a non-frame-"
+					"aligned read; carrying %lld byte(s) to next read "
+					"(mono=%d)", (long long)rem, (int)monoInput);
+			}
+			memcpy(s_partialTail, &Buffer[BufferLen + x - rem], (size_t)rem);
+			s_partialTailLen = (int)rem;
+			x -= rem;
+		}
+	}
+	// else: read returned nothing — leave s_partialTail/Len intact so
+	// the carried bytes are re-prepended on the next call.
 
 	// QIODevice::read returns -1 on error (device gone, hot-unplug
 	// race) and 0 if no data was available. Either way, leave
@@ -5591,6 +5928,24 @@ extern "C" void PollQSound()
 
 	while (BufferLen >= inChunkBytes)
 	{
+		// Re-check the teardown request inside the drain loop, not
+		// just at PollQSound entry: closeQSound / onAudioDevicesChanged
+		// can set it while we are mid-drain on stale old-stream chunks.
+		// Honouring it here drops the remaining buffered old data
+		// before it is decimated (which would otherwise consume the
+		// deferred FIR-history reset and save the old tail) and before
+		// a stale sub-frame carry is applied. Genuinely closing the
+		// GUI-close-races-an-in-flight-worker window needs a capture
+		// generation token / worker quiesce — a pre-existing
+		// architectural gap, see BUG-rx-audit "Known residual" — but
+		// this shrinks the window to a single in-progress chunk.
+		if (capture_reset_pending.exchange(0, std::memory_order_acquire))
+		{
+			BufferLen = 0;
+			s_partialTailLen = 0;
+			break;
+		}
+
 		short * src = (short *)Buffer;
 		short * processed;
 		int     processedFrames;
@@ -5639,11 +5994,13 @@ extern "C" void PollQSound()
 
 #if defined(Q_OS_MACOS)
 		// Dump BEFORE ProcessNewSamples. BufferFull mutates the input
-		// buffer in place on the using48000=1 path (sm_main.c:1003-1006
-		// rewrites the first quarter of Samples[] with the downsampled
-		// 12 kHz frames it just produced), so dumping after would
-		// capture a hybrid of downsampled-leading-frames and
-		// raw-trailing-frames at a 48 kHz sample-rate header — useless.
+		// buffer in place on the using48000=1 path (its 48->12 kHz
+		// reduction rewrites the first quarter of Samples[] with the
+		// downsampled 12 kHz frames it just produced — see
+		// sm_main.c::BufferFull, the `if (using48000)` block), so
+		// dumping after would capture a hybrid of
+		// downsampled-leading-frames and raw-trailing-frames at a
+		// 48 kHz sample-rate header — useless.
 		// The decimated path is safe in either order (BufferFull doesn't
 		// touch the buffer when using48000=0), but doing the dump
 		// uniformly up front keeps the rule simple.

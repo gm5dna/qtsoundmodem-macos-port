@@ -67,6 +67,9 @@
       <property name="editable">
        <bool>true</bool>
       </property>
+      <property name="toolTip">
+       <string>Sound card used to send TX audio to the radio. Pick a stereo device — even if you only use one channel.</string>
+      </property>
      </widget>
      <widget class="QComboBox" name="inputDevice">
       <property name="geometry">
@@ -79,6 +82,9 @@
       </property>
       <property name="editable">
        <bool>true</bool>
+      </property>
+      <property name="toolTip">
+       <string>Sound card used to receive audio from the radio. Mono and stereo Int16 devices are both accepted; mono is broadcast to stereo internally.</string>
       </property>
      </widget>
      <widget class="QLabel" name="label">
@@ -119,6 +125,9 @@
       <property name="text">
        <string>TX Rotation</string>
       </property>
+      <property name="toolTip">
+       <string>Rotate transmit between modems on the same channel pair, instead of always picking the first.</string>
+      </property>
      </widget>
      <widget class="QCheckBox" name="colourWaterfall">
       <property name="geometry">
@@ -131,6 +140,9 @@
       </property>
       <property name="text">
        <string>Colour Waterfall</string>
+      </property>
+      <property name="toolTip">
+       <string>Render the waterfall in colour (signal energy mapped to a colour gradient) rather than greyscale.</string>
       </property>
      </widget>
      <widget class="QCheckBox" name="stopWFonMinimize">
@@ -145,6 +157,9 @@
       <property name="text">
        <string>Stop Waterfall on Minimize</string>
       </property>
+      <property name="toolTip">
+       <string>Pause waterfall painting when the window is minimised — saves CPU when QtSoundModem is in the background.</string>
+      </property>
      </widget>
      <widget class="QCheckBox" name="minimizeonStart">
       <property name="geometry">
@@ -158,6 +173,9 @@
       <property name="text">
        <string>Minimize window on startup</string>
       </property>
+      <property name="toolTip">
+       <string>Start QtSoundModem minimised — useful when launched at login as a background service.</string>
+      </property>
      </widget>
      <widget class="QLineEdit" name="txLatency">
       <property name="geometry">
@@ -170,6 +188,9 @@
       </property>
       <property name="text">
        <string>0</string>
+      </property>
+      <property name="toolTip">
+       <string>Extra PTT hold time (ms) to compensate for soundcard start-up latency, so the leading bits aren't truncated. Default 50.</string>
       </property>
      </widget>
      <widget class="QLabel" name="label_6">
@@ -214,6 +235,9 @@
         <string/>
        </property>
       </item>
+      <property name="toolTip">
+       <string>Sound-card channel for modem 1 (channel A). None = disabled, Left = left audio channel, Right = right.</string>
+      </property>
      </widget>
      <widget class="QLabel" name="label_12">
       <property name="geometry">
@@ -252,6 +276,9 @@
         <string>Right</string>
        </property>
       </item>
+      <property name="toolTip">
+       <string>Sound-card channel for modem 2 (channel B). None = disabled, Left = left audio channel, Right = right.</string>
+      </property>
      </widget>
      <widget class="QLabel" name="label_13">
       <property name="geometry">
@@ -277,6 +304,9 @@
       </property>
       <property name="text">
        <string>Single Channel Output</string>
+      </property>
+      <property name="toolTip">
+       <string>Mirror TX audio to both stereo channels — same signal on left and right. Useful when the rig is wired to either channel and you don't want one side silent.</string>
       </property>
      </widget>
      <widget class="QCheckBox" name="DualPTT">
@@ -307,6 +337,9 @@
       <property name="text">
        <string>ALSA</string>
       </property>
+      <property name="toolTip">
+       <string>Use the Linux ALSA backend (or WaveOut on Windows). The default on those platforms.</string>
+      </property>
      </widget>
      <widget class="QRadioButton" name="OSS">
       <property name="geometry">
@@ -320,6 +353,9 @@
       <property name="text">
        <string>OSS</string>
       </property>
+      <property name="toolTip">
+       <string>Use the legacy OSS backend (Linux only). Rarely needed on modern systems.</string>
+      </property>
      </widget>
      <widget class="QRadioButton" name="PULSE">
       <property name="geometry">
@@ -332,6 +368,9 @@
       </property>
       <property name="text">
        <string>Pulse Audio</string>
+      </property>
+      <property name="toolTip">
+       <string>Use PulseAudio for audio I/O (Linux only).</string>
       </property>
      </widget>
      <widget class="QCheckBox" name="multiCore">
@@ -362,6 +401,9 @@
       <property name="text">
        <string>UDP   </string>
       </property>
+      <property name="toolTip">
+       <string>Receive audio over UDP — for piping samples in from another machine instead of a sound card.</string>
+      </property>
      </widget>
      <widget class="QLineEdit" name="UDPPort">
       <property name="geometry">
@@ -374,6 +416,9 @@
       </property>
       <property name="text">
        <string>8888</string>
+      </property>
+      <property name="toolTip">
+       <string>Local UDP port to listen on for audio samples (when UDP backend is selected). Default 8888.</string>
       </property>
      </widget>
      <widget class="QComboBox" name="Modem_3_Chan">
@@ -400,6 +445,9 @@
         <string>Right</string>
        </property>
       </item>
+      <property name="toolTip">
+       <string>Sound-card channel for modem 3 (channel C). Usually means a second sound device, since modems 1–2 already occupy the first card's left/right.</string>
+      </property>
      </widget>
      <widget class="QLabel" name="label_14">
       <property name="geometry">
@@ -451,6 +499,9 @@
         <string>Right</string>
        </property>
       </item>
+      <property name="toolTip">
+       <string>Sound-card channel for modem 4 (channel D). Requires a second sound device.</string>
+      </property>
      </widget>
      <widget class="QLabel" name="label_8">
       <property name="geometry">
@@ -494,6 +545,9 @@
         <string>300</string>
        </property>
       </item>
+      <property name="toolTip">
+       <string>Lowest audio frequency (Hz) shown on the waterfall display.</string>
+      </property>
      </widget>
      <widget class="QComboBox" name="WaterfallMax">
       <property name="geometry">
@@ -529,6 +583,9 @@
         <string>5500</string>
        </property>
       </item>
+      <property name="toolTip">
+       <string>Highest audio frequency (Hz) shown on the waterfall display.</string>
+      </property>
      </widget>
      <widget class="QLabel" name="label_11">
       <property name="geometry">
@@ -568,6 +625,9 @@
       <property name="text">
        <string>Only Mix/Snoop Devices (needs custom .asoundrc)</string>
       </property>
+      <property name="toolTip">
+       <string>Linux ALSA only: hide non-dmix/dsnoop devices. Requires a hand-tuned ~/.asoundrc.</string>
+      </property>
      </widget>
      <widget class="QCheckBox" name="useKISSControls">
       <property name="geometry">
@@ -581,6 +641,9 @@
       <property name="text">
        <string>Enable KISS Control and Reporting</string>
       </property>
+      <property name="toolTip">
+       <string>Honour KISS control frames from connected clients (set TXDelay, parameters, etc.) and report status back over the KISS link.</string>
+      </property>
      </widget>
      <widget class="QRadioButton" name="QSOUND">
       <property name="geometry">
@@ -593,6 +656,9 @@
       </property>
       <property name="text">
        <string>QSound</string>
+      </property>
+      <property name="toolTip">
+       <string>Use Qt Multimedia for audio I/O. The macOS port forces this backend at launch.</string>
       </property>
      </widget>
     </widget>
@@ -630,6 +696,9 @@
         <height>20</height>
        </rect>
       </property>
+      <property name="toolTip">
+       <string>TCP port for the AGWPE-compatible server (default 8000). Clients like UI-View, BPQ, and many APRS apps connect here.</string>
+      </property>
      </widget>
      <widget class="QLineEdit" name="KISSPort">
       <property name="geometry">
@@ -639,6 +708,9 @@
         <width>47</width>
         <height>20</height>
        </rect>
+      </property>
+      <property name="toolTip">
+       <string>TCP port for the KISS-over-TCP server (default 8105 in this fork). Clients like LinBPQ/BPQ32 and JNOS connect here.</string>
       </property>
      </widget>
      <widget class="QLabel" name="label_4">
@@ -666,6 +738,9 @@
       <property name="text">
        <string>Enabled</string>
       </property>
+      <property name="toolTip">
+       <string>Enable the AGWPE TCP server.</string>
+      </property>
      </widget>
      <widget class="QCheckBox" name="KISSEnabled">
       <property name="geometry">
@@ -678,6 +753,9 @@
       </property>
       <property name="text">
        <string>Enabled</string>
+      </property>
+      <property name="toolTip">
+       <string>Enable the KISS-over-TCP server.</string>
       </property>
      </widget>
      <widget class="QCheckBox" name="UDPEnabled">
@@ -692,6 +770,9 @@
       <property name="text">
        <string>Enabled</string>
       </property>
+      <property name="toolTip">
+       <string>Enable streaming TX/RX audio to the UDP host above. Independent of the UDP audio backend (which receives audio from UDP).</string>
+      </property>
      </widget>
      <widget class="QLineEdit" name="UDPTXHost">
       <property name="geometry">
@@ -701,6 +782,9 @@
         <width>111</width>
         <height>20</height>
        </rect>
+      </property>
+      <property name="toolTip">
+       <string>Hostname or IP address to send UDP audio to (when UDP audio is enabled). Used for piping samples to a remote receiver.</string>
       </property>
      </widget>
      <widget class="QLabel" name="label_9">
@@ -724,6 +808,9 @@
         <width>47</width>
         <height>20</height>
        </rect>
+      </property>
+      <property name="toolTip">
+       <string>UDP port to send audio to on the remote host.</string>
       </property>
      </widget>
      <widget class="QLabel" name="label_10">
@@ -751,6 +838,9 @@
       <property name="editable">
        <bool>true</bool>
       </property>
+      <property name="toolTip">
+       <string>Serial port for 6Pack-protocol multiplexer (e.g. for connecting an external TNC chain). Leave blank to use TCP only.</string>
+      </property>
      </widget>
      <widget class="QLabel" name="label_17">
       <property name="geometry">
@@ -773,6 +863,9 @@
         <width>47</width>
         <height>20</height>
        </rect>
+      </property>
+      <property name="toolTip">
+       <string>TCP port for the 6Pack server (alternative to a serial connection).</string>
       </property>
      </widget>
      <widget class="QLabel" name="label_7">
@@ -800,6 +893,9 @@
       <property name="text">
        <string>Enabled</string>
       </property>
+      <property name="toolTip">
+       <string>Enable the 6Pack server (serial or TCP, depending on which is filled in above).</string>
+      </property>
      </widget>
      <widget class="QLineEdit" name="MgmtPort">
       <property name="geometry">
@@ -809,6 +905,9 @@
         <width>47</width>
         <height>20</height>
        </rect>
+      </property>
+      <property name="toolTip">
+       <string>TCP port for the LinBPQ-discovery / management server. 0 = disabled (default). Stored as MGMT/Port.</string>
       </property>
      </widget>
      <widget class="QLabel" name="label_18">
@@ -865,6 +964,9 @@
       <property name="text">
        <string>Enabled</string>
       </property>
+      <property name="toolTip">
+       <string>Enable the REST/RHP server (used by WhatsPac and similar clients).</string>
+      </property>
      </widget>
      <widget class="QLabel" name="label_20">
       <property name="geometry">
@@ -903,6 +1005,9 @@
       </property>
       <property name="editable">
        <bool>true</bool>
+      </property>
+      <property name="toolTip">
+       <string>How to key the radio's PTT. Pick a serial port name, FLRig/Hamlib host, GPIO, CM108, or one of the special values.</string>
       </property>
      </widget>
      <widget class="QLabel" name="label_5">
@@ -992,6 +1097,9 @@
         <height>20</height>
        </rect>
       </property>
+      <property name="toolTip">
+       <string>BCM GPIO pin number for the left/main PTT (Raspberry Pi only). Pin numbering follows the Broadcom convention.</string>
+      </property>
      </widget>
      <widget class="QLineEdit" name="GPIORight">
       <property name="geometry">
@@ -1001,6 +1109,9 @@
         <width>25</width>
         <height>20</height>
        </rect>
+      </property>
+      <property name="toolTip">
+       <string>BCM GPIO pin for the right/secondary PTT — used when Dual PTT is enabled.</string>
       </property>
      </widget>
      <widget class="QLabel" name="GPIOLab2">
@@ -1038,6 +1149,9 @@
         <height>20</height>
        </rect>
       </property>
+      <property name="toolTip">
+       <string>Serial baud rate for the CAT-PTT port (e.g. 4800, 9600, 38400). Match what the radio is set to.</string>
+      </property>
      </widget>
      <widget class="QRadioButton" name="RTS">
       <property name="geometry">
@@ -1050,6 +1164,9 @@
       </property>
       <property name="text">
        <string>RTS</string>
+      </property>
+      <property name="toolTip">
+       <string>Use the serial port's RTS line as PTT. Common with USB-serial PTT cables.</string>
       </property>
      </widget>
      <widget class="QRadioButton" name="CAT">
@@ -1064,6 +1181,9 @@
       <property name="text">
        <string>CAT</string>
       </property>
+      <property name="toolTip">
+       <string>Send a CAT command on the serial port to key PTT (e.g. Yaesu TX1; / TX0;). Configure the strings below.</string>
+      </property>
      </widget>
      <widget class="QLineEdit" name="VIDPID">
       <property name="geometry">
@@ -1073,6 +1193,9 @@
         <width>400</width>
         <height>20</height>
        </rect>
+      </property>
+      <property name="toolTip">
+       <string>CM108-style HID device for PTT — hex VID:PID with 0x prefix (e.g. 0xD8C:0x08) or a hidraw path.</string>
       </property>
      </widget>
      <widget class="QLabel" name="CM108Label">
@@ -1115,6 +1238,9 @@
       </property>
       <property name="text">
        <string>DTR</string>
+      </property>
+      <property name="toolTip">
+       <string>Use the serial port's DTR line as PTT. Some cables wire PTT to DTR rather than RTS.</string>
       </property>
      </widget>
     </widget>

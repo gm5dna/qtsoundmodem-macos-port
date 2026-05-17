@@ -21,6 +21,9 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 // UZ7HO Soundmodem Port by John Wiseman G8BPQ
 
 #include "UZ7HOStuff.h"
+#ifndef _WIN32
+#include <pthread.h>
+#endif
 
 #ifdef WIN32
 
@@ -211,6 +214,21 @@ TStringList KISS_iacked[4];
 // two of them (L and R)
 
 TStringList all_frame_buf[5];
+
+// AGW / KISS producers run on the Qt I/O thread; the modem worker is
+// on a separate worker thread. Both Add to and Delete from
+// all_frame_buf[*] (TStringList::Add reallocs Items; Delete shifts
+// pointers and decrements Count) — unsynchronised access lands real
+// corruption when a 300-baud Tx holds the worker inside the dequeue
+// for seconds, widening the race window. One coarse mutex covers all
+// four channels; contention is negligible. pthread_mutex (not QMutex)
+// so the same primitive is usable from both C producers and C++
+// callers. Windows kept unchanged — the LOCK/UNLOCK_FRAME_BUF macros
+// are no-ops there (see UZ7HOStuff.h) so the race lives on there
+// until separately addressed with a CRITICAL_SECTION-based path.
+#ifndef _WIN32
+pthread_mutex_t all_frame_buf_mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
 
 typedef struct registeredCalls_t
 {
