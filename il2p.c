@@ -4113,7 +4113,7 @@ void il2p_rec_bit(int chan, int subchan, int slice, int dbit)
 
 						F->pc = 0;
 
-						if (il2p_crc[chan])
+						if (il2p_crc[chan] & 1)
 						{
 							// enter collect crc state
 
@@ -4154,7 +4154,7 @@ void il2p_rec_bit(int chan, int subchan, int slice, int dbit)
 			{
 				// got frame. See if need crc
 
-				if (il2p_crc[chan])
+				if (il2p_crc[chan] & 1)
 				{
 					// enter collect crc state
 
@@ -4236,7 +4236,7 @@ void il2p_rec_bit(int chan, int subchan, int slice, int dbit)
 			debugTimeStamp("Decoded Packet is", 'R');
 			debugHexDump(pp->frame_data, pp->frame_len, 'R');
 
-			if (il2p_crc[chan])
+			if (il2p_crc[chan] & 1)
 			{
 				//copy crc bytes to packet object
 
@@ -4442,7 +4442,10 @@ static void send_bit(int chan, int b, int polarity);
 
 string * il2p_send_frame(int chan, packet_t pp, int max_fec, int polarity)
 {
-	unsigned char encoded[IL2P_MAX_PACKET_SIZE] = "";
+	// +4 reserves room for the four Hamming(7,4)-encoded CRC bytes appended
+	// when il2p_crc[chan] & 1; a max-payload frame otherwise fills the
+	// buffer exactly and the CRC suffix overruns the stack.
+	unsigned char encoded[IL2P_MAX_PACKET_SIZE + 4] = "";
 	string * packet = newString();
 	int preamblecount;
 	unsigned char preamble[1024];
@@ -4476,6 +4479,10 @@ string * il2p_send_frame(int chan, packet_t pp, int max_fec, int polarity)
 		// CRC3 encoded from high nibble of 16 - bit CRC value (from crc2)
 		// CRC0 encoded from low nibble of 16 - bit CRC value (from crc1)
 
+		if (elen + 4 > (int)sizeof(encoded)) {
+			Debugprintf("IL2P: encoded buffer too small for CRC suffix (elen=%d, size=%d)\n", elen, (int)sizeof(encoded));
+			return (packet);
+		}
 		encoded[elen++] = Hamming74EncodeTable[crc2 >> 4];
 		encoded[elen++] = Hamming74EncodeTable[crc2 & 0xf];
 		encoded[elen++] = Hamming74EncodeTable[crc1 >> 4];
@@ -4586,8 +4593,12 @@ void il2p_get_new_frame(int snd_ch, TStringList * frame_stream)
 	tx_frame_status[snd_ch] = FRAME_NEW_FRAME;
 	tx_byte_status[snd_ch] = BYTE_EMPTY;
 
+	LOCK_FRAME_BUF();
 	if (frame_stream->Count == 0)
+	{
+		UNLOCK_FRAME_BUF();
 		tx_frame_status[snd_ch] = FRAME_NO_FRAME;
+	}
 	else
 	{
 		// We now pass control byte and ack bytes on front and pointer to socket on end if ackmode
@@ -4605,7 +4616,7 @@ void il2p_get_new_frame(int snd_ch, TStringList * frame_stream)
 		}
 		else
 		{
-			// Just remove control 
+			// Just remove control
 
 			mydelete(myTemp, 0, 1);
 		}
@@ -4616,6 +4627,7 @@ void il2p_get_new_frame(int snd_ch, TStringList * frame_stream)
 		tx_data[snd_ch] = fill_il2p_data(snd_ch, myTemp);
 
 		Delete(frame_stream, 0);			// This will invalidate temp
+		UNLOCK_FRAME_BUF();
 	}
 }
 

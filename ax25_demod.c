@@ -445,6 +445,18 @@ void chk_dcd1(int snd_ch, int buf_size)
 			int n = 0;
 
 			port = new_tx_port[snd_ch];
+
+			// chk_dcd1 runs on the modem worker and is a producer for
+			// all_frame_buf[] (the Add at the loop below, plus the KISS
+			// Add); the Qt AGW/KISS socket thread Adds concurrently.
+			// 4571fcb locked the AGW/mod/consumer sites but skipped this
+			// one (the "verified by grep" check was fooled by the file's
+			// ISO-8859/CRLF bytes making BSD grep treat it as binary, so
+			// the references here read as absent). Hold the same coarse
+			// lock across the enqueue/peek region; drop it before RX2TX
+			// so DoTX's own LOCK_FRAME_BUF can't self-deadlock (the
+			// mutex is non-recursive).
+			LOCK_FRAME_BUF();
 			do
 			{
 				AX25Sess = &AX25Port[snd_ch][port];
@@ -505,7 +517,10 @@ void chk_dcd1(int snd_ch, int buf_size)
 				}
 			}
 
-			if (all_frame_buf[snd_ch].Count > 0 && snd_status[snd_ch] == SND_IDLE)
+			int haveFrames = (all_frame_buf[snd_ch].Count > 0);
+			UNLOCK_FRAME_BUF();
+
+			if (haveFrames && snd_status[snd_ch] == SND_IDLE)
 			{
 				resptime_tick[snd_ch] = 0;
 				RX2TX(snd_ch);					// Do TX
@@ -2320,7 +2335,7 @@ void decode_stream_FSK(int last, int snd_ch, int rcvr_nr, int emph, float * src_
 		if (bit_buf[sample_cnt] != bit_buf[sample_cnt])
 			bit_buf[sample_cnt] = 0.0f;
 
-		// Находим максимум в буфере синхронизации
+		// пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 		// Find the maximum in the synchronization buffer
 
 		if (bit_buf[sample_cnt] > PkAmpMax)
@@ -2743,11 +2758,11 @@ void decode_stream_BPSK(int last, int snd_ch, int rcvr_nr, int emph, float * src
 		{
 			srcI[i] = srcI[i] / PSK_AGC;
 			srcQ[i] = srcQ[i] / PSK_AGC;
-			amp = amp / PSK_AGC; // Вместо SQRT
+			amp = amp / PSK_AGC; // пїЅпїЅпїЅпїЅпїЅпїЅ SQRT
 		}
 		//
 		bit_buf[sample_cnt] = 0.95*bit_buf[sample_cnt] + 0.05*amp;
-		// Находим максимум в буфере синхронизации
+		// пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 		if (bit_buf[sample_cnt] > PkAmpMax)
 		{
 			PkAmpI = srcI[i];
@@ -3035,7 +3050,7 @@ void decode_stream_QPSK(int last, int snd_ch, int rcvr_nr, int emph, float * src
 			srcI[i] = srcI[i] / PSK_AGC;
 			srcQ[i] = srcQ[i] / PSK_AGC;
 
-			amp = amp / PSK_AGC; // Вместо SQRT
+			amp = amp / PSK_AGC; // пїЅпїЅпїЅпїЅпїЅпїЅ SQRT
 		}
 
 		bit_buf[sample_cnt] = 0.95 *  bit_buf[sample_cnt] + 0.05 * amp;
@@ -3406,12 +3421,12 @@ void decode_stream_8PSK(int last, int snd_ch, int rcvr_nr, int emph, float * src
 		{
 			srcI[i] = srcI[i] / PSK_AGC;
 			srcQ[i] = srcQ[i] / PSK_AGC;
-			amp = amp / PSK_AGC; // Вместо SQRT
+			amp = amp / PSK_AGC; // пїЅпїЅпїЅпїЅпїЅпїЅ SQRT
 		}
 
 		bit_buf[sample_cnt] = 0.95*bit_buf[sample_cnt] + 0.05*amp;
 
-		// Находим максимум в буфере синхронизации
+		// пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 		if (bit_buf[sample_cnt] > PkAmpMax)
 		{
 			PkAmpI = srcI[i];
@@ -3748,7 +3763,7 @@ void init_BPF(float freq1, float freq2, unsigned short tap, float samplerate, fl
 
 	bpf_h[tap / 2] = bpf_h[tap / 2] + 1;
 
-	for (i = 0; i <= tap; i++)
+	for (i = 0; i < tap; i++)
 	{
 		buf[i] = -(bpf_l[i] + bpf_h[i]);
 	}

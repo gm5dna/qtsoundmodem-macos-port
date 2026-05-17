@@ -764,7 +764,10 @@ void DoTX(int Chan)
 
 				// See if more to send. If so, don't drop PTT
 
-				if (all_frame_buf[Chan].Count)
+				LOCK_FRAME_BUF();
+				int hasNext = all_frame_buf[Chan].Count;
+				if (!hasNext) UNLOCK_FRAME_BUF();
+				if (hasNext)
 				{
 					SoundIsPlaying = TRUE;
 					Number = 0;
@@ -787,7 +790,7 @@ void DoTX(int Chan)
 					}
 					else
 					{
-						// Just remove control 
+						// Just remove control
 
 						mydelete(myTemp, 0, 1);
 					}
@@ -795,6 +798,7 @@ void DoTX(int Chan)
 					tx_data = duplicateString(myTemp);		// so can free original below
 
 					Delete(&all_frame_buf[Chan], 0);			// This will invalidate temp
+					UNLOCK_FRAME_BUF();
 
 					AGW_AX25_frame_analiz(Chan, FALSE, tx_data);
 
@@ -855,11 +859,17 @@ void DoTX(int Chan)
 		// Note this may block in SampleSink
 
 		Debugprintf("Sending RSID");
-		sendRSID(Chan, all_frame_buf[Chan].Count == 0);
+		LOCK_FRAME_BUF();
+		int rsidEmpty = (all_frame_buf[Chan].Count == 0);
+		UNLOCK_FRAME_BUF();
+		sendRSID(Chan, rsidEmpty);
 		return;
 	}
 
-	if (all_frame_buf[Chan].Count == 0)
+	LOCK_FRAME_BUF();
+	int queueEmpty = (all_frame_buf[Chan].Count == 0);
+	UNLOCK_FRAME_BUF();
+	if (queueEmpty)
 		return;
 
 	// Start a new send. modulator should handle TXD etc
@@ -890,6 +900,7 @@ void DoTX(int Chan)
 		// ?? Should we allow two ARDOP modems - could make sense if we can run sound
 		// card channels independently
 
+		LOCK_FRAME_BUF();
 		string * myTemp = Strings(&all_frame_buf[Chan], 0);			// get message
 		string * tx_data;
 
@@ -904,7 +915,7 @@ void DoTX(int Chan)
 		}
 		else
 		{
-			// Just remove control 
+			// Just remove control
 
 			mydelete(myTemp, 0, 1);
 		}
@@ -912,6 +923,7 @@ void DoTX(int Chan)
 		tx_data = duplicateString(myTemp);		// so can free original below
 
 		Delete(&all_frame_buf[Chan], 0);			// This will invalidate temp
+		UNLOCK_FRAME_BUF();
 
 		AGW_AX25_frame_analiz(Chan, FALSE, tx_data);
 
@@ -934,6 +946,7 @@ void DoTX(int Chan)
 
 		// We allow two RUH modems
 
+		LOCK_FRAME_BUF();
 		string * myTemp = Strings(&all_frame_buf[Chan], 0);			// get message
 		string * tx_data;
 
@@ -948,7 +961,7 @@ void DoTX(int Chan)
 		}
 		else
 		{
-			// Just remove control 
+			// Just remove control
 
 			mydelete(myTemp, 0, 1);
 		}
@@ -956,6 +969,7 @@ void DoTX(int Chan)
 		tx_data = duplicateString(myTemp);		// so can free original below
 
 		Delete(&all_frame_buf[Chan], 0);			// This will invalidate temp
+		UNLOCK_FRAME_BUF();
 
 		AGW_AX25_frame_analiz(Chan, FALSE, tx_data);
 

@@ -443,6 +443,9 @@ extern unsigned short * DMABuffer;
 extern unsigned short QtDMABuffer[8192];
 extern int Number;
 extern int SoundIsPlaying;
+extern int SampleNo;
+extern float TX_Samplerate;
+extern int pttOnTime(void);
 
 short * SendtoCard(short * buf, int n)
 {
@@ -502,16 +505,62 @@ void SoundFlush(void)
 
 	// Wait for QAudioSink to reach IdleState. The
 	// audioOutStateChanged slot in QtSoundModem.cpp clears
-	// SoundIsPlaying on IdleState. 5 s is a generous bound — even
-	// a 1200-sample frame at 12 kHz drains in well under 1 s.
+	// SoundIsPlaying when the sink signals IdleState. 1 s is a
+	// generous bound: a 1200-sample frame at 12 kHz drains in
+	// ~100 ms, and even RUH 9600 at 48 kHz drains in ~100 ms.
+	// The previous 5 s ceiling meant up to 5 s of PTT-on dead
+	// carrier when the sink was wedged (IdleState never delivered,
+	// e.g. mid-Tx hot-unplug or a CoreAudio device glitch).
+	//
+	// A synchronous state() peek was considered but rejected: there
+	// is a race between out->write() returning on the worker thread
+	// and the sink transitioning out of IdleState on the audio
+	// thread, so a sync IdleState reading could be stale-from-the-
+	// previous-frame and short-circuit the wait too soon. Stick to
+	// the async flag; the tightened timeout is the real fix here.
 	unsigned int started = getTicks();
-	while (SoundIsPlaying && (getTicks() - started) < 5000)
+	unsigned int elapsed = 0;
+	while (SoundIsPlaying && elapsed < 1000)
+	{
 		usleep(10000); // 10 ms
+		elapsed = getTicks() - started;
+	}
 
-	// If we hit the timeout (sink torn down by hot-unplug, or
-	// IdleState never delivered for some other reason) clear the
-	// flag explicitly so DoTX / ProcessNewSamples don't wedge.
+	if (SoundIsPlaying)
+		Debugprintf("MacBits: SoundFlush timed out after %u ms waiting for IdleState; forcing PTT release\n", elapsed);
+
+	// Clear the flag explicitly so DoTX / ProcessNewSamples don't
+	// wedge if we exited via the timeout above.
 	SoundIsPlaying = 0;
+
+	// Timed-PTT tail. QAudioSink IdleState means "my push buffer is
+	// empty" — not "the DAC has drained". CoreAudio HAL (and the USB
+	// CODEC ring buffer below it) still hold the last few tens of ms
+	// of samples; dropping PTT now would truncate the trailing flag
+	// bytes / IL2P trailer on a slow-keying USB radio interface.
+	//
+	// Mirror the ALSA path's logic (ALSASound.c::SoundFlush): the
+	// total play wall-clock-time for SampleNo samples at TX_Samplerate
+	// is txlenMs; subtract elapsed wall-time since PTT was keyed
+	// (pttclk → pttOnTime) and sleep the remainder. IL2P modes have
+	// already padded the tail with txLatency*baud extra bits (see
+	// il2p.c::il2p_get_new_bit_tail), so SampleNo accounts for the
+	// soundcard startup latency without us double-counting it here.
+	//
+	// Bound the sleep at 500 ms so a wedged SampleNo/pttclk (e.g. a
+	// caller that doesn't reset SampleNo at PTT-on, or a path that
+	// shares the PTT timer across frames) can't hold PTT keyed
+	// indefinitely. A typical CoreAudio HAL drain is 50-150 ms; a
+	// computed remainder past 500 ms means state is stale and the
+	// sleep should be skipped.
+	if (useTimedPTT && SampleNo > 0 && TX_Samplerate > 0.0f)
+	{
+		int txlenMs = (int)((1000.0f * SampleNo) / TX_Samplerate);
+		int elapsedMs = pttOnTime();
+		int remain = txlenMs - elapsedMs;
+		if (remain > 0 && remain <= 500)
+			usleep(remain * 1000);
+	}
 }
 
 extern int nonGUIMode;
@@ -869,6 +918,17 @@ void debugDecodeWavNative(const char * path)
 		fclose(f);
 		return;
 	}
+
+	// Design the antialias FIR for 48 kHz. The live Qt path runs this
+	// from initializeAudioIn; the non-native debugDecodeWav runs it
+	// too. Without it here, BufferFull's using48000 48->12 kHz step
+	// (which now routes co-running FSK channels through
+	// decimateAudioToModem) would hit the fir_designed_rate==0
+	// safety fallback and silently keep the old aliased every-4th
+	// pick — so --decode-wav-native RUH+FSK tests would not exercise
+	// the BUG-rx-audit item-5 anti-aliasing at all. (Codex
+	// second-reviewer catch.)
+	aaFilterInit(48000);
 
 	// Force one BPF/TXBPF coefficient computation per channel before
 	// the first sample lands in BufferFull (same rationale as

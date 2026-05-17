@@ -280,8 +280,10 @@ void get_new_frame(UCHAR snd_ch, TStringList * frame_stream)
 	tx_frame_status[snd_ch] = FRAME_NEW_FRAME;
 	tx_byte_status[snd_ch] = BYTE_EMPTY;
 
+	LOCK_FRAME_BUF();
 	if (frame_stream->Count == 0)
 	{
+		UNLOCK_FRAME_BUF();
 		tx_frame_status[snd_ch] = FRAME_NO_FRAME;
 		return;
 	}
@@ -309,6 +311,7 @@ void get_new_frame(UCHAR snd_ch, TStringList * frame_stream)
 	tx_data[snd_ch] = duplicateString(myTemp);		// so can free original below
 
 	Delete(frame_stream, 0);			// This will invalidate temp
+	UNLOCK_FRAME_BUF();
 
 	AGW_AX25_frame_analiz(snd_ch, FALSE, tx_data[snd_ch]);
 
@@ -719,8 +722,12 @@ void fx25_get_new_frame(int snd_ch, TStringList * frame_stream)
 	tx_fx25_size[snd_ch] = 1;
 	tx_frame_status[snd_ch] = FRAME_NEW_FRAME;
 	tx_byte_status[snd_ch] = BYTE_EMPTY;
+	LOCK_FRAME_BUF();
 	if (frame_stream->Count == 0)
+	{
+		UNLOCK_FRAME_BUF();
 		tx_frame_status[snd_ch] = FRAME_NO_FRAME;
+	}
 	else
 	{
 		// We now pass control byte and ack bytes on front and pointer to socket on end if ackmode
@@ -738,7 +745,7 @@ void fx25_get_new_frame(int snd_ch, TStringList * frame_stream)
 		}
 		else
 		{
-			// Just remove control 
+			// Just remove control
 
 			mydelete(myTemp, 0, 1);
 		}
@@ -749,6 +756,7 @@ void fx25_get_new_frame(int snd_ch, TStringList * frame_stream)
 		tx_data[snd_ch] = fill_fx25_data(snd_ch, myTemp);
 
 		Delete(frame_stream, 0);			// This will invalidate temp
+		UNLOCK_FRAME_BUF();
 	}
 }
 
