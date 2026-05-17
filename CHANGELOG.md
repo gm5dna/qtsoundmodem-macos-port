@@ -6,6 +6,34 @@ This fork starts at `mac-0.1.0`. Pre-fork history (upstream tags `0.64`–`0.76`
 
 ## [Unreleased]
 
+## [mac-0.1.1] – 2026-05-17
+
+Consolidates the rx/tx audit fixes and the tooltips / help-menu work onto `macos-port`. Twelve correctness and robustness fixes — four of which also affect upstream — plus in-app help.
+
+### Added
+
+- Help menu: User Guide, G8BPQ online, "What's This?", and About.
+- Hover tooltips throughout: main-window controls (modem mode, centre, RX offset, DCD, audio, waterfall), the Devices / Modem (all tabs) / Calibration dialogs with `?` help buttons, and the Settings / View / Tools menu actions; CWID and modem-dialog filter coverage.
+
+### Changed
+
+- Documented 300-baud tuning guidance — raise `txbpf` and `TXTail`, and defer `pnt_change`.
+
+### Fixed
+
+- **(also affects upstream)** IL2P: `encoded[]` was not sized for the +CRC suffix, overflowing on maximum-length frames.
+- **(also affects upstream)** IL2P: Rx CRC state-machine bit-mask now matches the validator (`& 1`).
+- **(also affects upstream)** BPF: `init_BPF` off-by-one read past the last filter tap.
+- **(also affects upstream)** AGW / KISS: `all_frame_buf` add/delete is now locked against the modem worker thread, closing a data race.
+- Audio: surface `QAudioSource::start()` failure instead of silently leaving Rx off.
+- Audio: log `QAudioSource` `StoppedState` errors instead of dying silently.
+- Audio: drop PTT and exit `sendSamplestoQSound` when `QAudioSink` reports an error.
+- Audio: cap the `SoundFlush` `IdleState` wait at 1 s to bound dead-air after PTT.
+- Audio: honour `useTimedPTT` / `txLatency` on the macOS Qt path.
+- Audio: anti-alias the 48 kHz → 12 kHz decimation step so co-running FSK channels no longer alias.
+- Audio: carry sub-frame tails and reset capture state on device swap.
+- Audio: flush the FIR decimator history on every capture (re)open.
+
 ## [mac-0.1.0] – 2026-05-10
 
 First tagged release of the macOS port. Builds and runs natively on Apple Silicon (macOS 14+), uses Qt 6 Multimedia for audio and libhidapi for CM108 PTT, and ships with a curated set of fixes — three of which also affect upstream.
@@ -56,5 +84,6 @@ First tagged release of the macOS port. Builds and runs natively on Apple Silico
 - Broken "Restart Waterfall" menu item.
 - Windows-only build artefacts and source backups.
 
-[Unreleased]: https://github.com/gm5dna/qtsoundmodem-macos-port/compare/mac-0.1.0...HEAD
+[Unreleased]: https://github.com/gm5dna/qtsoundmodem-macos-port/compare/mac-0.1.1...HEAD
+[mac-0.1.1]: https://github.com/gm5dna/qtsoundmodem-macos-port/compare/mac-0.1.0...mac-0.1.1
 [mac-0.1.0]: https://github.com/gm5dna/qtsoundmodem-macos-port/releases/tag/mac-0.1.0
