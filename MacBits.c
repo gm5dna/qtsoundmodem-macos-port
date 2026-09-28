@@ -68,6 +68,7 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 //     existing Qt Multimedia path in QtSoundModem.cpp; whether stubs
 //     or call-site re-routing are needed is settled there.
 
+#include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <signal.h>
@@ -772,9 +773,15 @@ void debugDecodeWav(const char * path)
 	short monoBuf[512 * 8];
 	short decimated[1024];
 	int totalInFrames = 0;
+	// Stop at the end of the data chunk, not EOF: trailing LIST/id3
+	// chunks are not audio. A zero size (e.g. an unfinalised dump) means
+	// read to EOF.
+	long framesLeft = dataChunkSize > 0 ? dataChunkSize / (2 * numCh) : LONG_MAX;
 
 	while (1)
 	{
+		if (framesLeft < inFramesPerChunk) break;
+		framesLeft -= inFramesPerChunk;
 		if (numCh == 1)
 		{
 			size_t n = fread(monoBuf, sizeof(short), inFramesPerChunk, f);
@@ -960,9 +967,12 @@ void debugDecodeWavNative(const char * path)
 	short stereoIn[2 * 2048];  // 4096 shorts per call
 	short monoBuf[2048];
 	int totalInFrames = 0;
+	long framesLeft = dataChunkSize > 0 ? dataChunkSize / (2 * numCh) : LONG_MAX;	// see debugDecodeWav
 
 	while (1)
 	{
+		if (framesLeft < chunkFrames) break;
+		framesLeft -= chunkFrames;
 		if (numCh == 1)
 		{
 			size_t n = fread(monoBuf, sizeof(short), chunkFrames, f);
