@@ -422,8 +422,10 @@ void chk_dcd1(int snd_ch, int buf_size)
 
 	for (i = 0; i < port_num; i++)
 	{
+		LOCK_FRAME_BUF();	// AGW connect/disconnect writes status on the GUI thread
 		if (AX25Port[snd_ch][i].status != STAT_NO_LINK)
 			active++;
+		UNLOCK_FRAME_BUF();
 
 		if (active < 2)
 			resptime_tick[snd_ch] = resptime[snd_ch];
@@ -454,8 +456,8 @@ void chk_dcd1(int snd_ch, int buf_size)
 			// ISO-8859/CRLF bytes making BSD grep treat it as binary, so
 			// the references here read as absent). Hold the same coarse
 			// lock across the enqueue/peek region; drop it before RX2TX
-			// so DoTX's own LOCK_FRAME_BUF can't self-deadlock (the
-			// mutex is non-recursive).
+			// so the GUI thread's AGW input isn't held off for a whole
+			// transmission (the mutex is recursive, so no self-deadlock).
 			LOCK_FRAME_BUF();
 			do
 			{
@@ -4357,7 +4359,9 @@ void ProcessRXFrames(int snd_ch)
 					}
 					else
 					{
+						LOCK_FRAME_BUF();	// L2 vs AGW input on the GUI thread
 						analiz_frame(snd_ch, detect_list[snd_ch].Items[i], report, fecflag);
+						UNLOCK_FRAME_BUF();
 					}
 				}
 			}

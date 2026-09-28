@@ -1485,7 +1485,9 @@ void AGW_AX25_frame_analiz(int snd_ch, int RX, string * frame)
 
 	decode_frame(frame->Data, frame->Length, path, data, &pid, &nr, &ns, &f_type, &f_id, &rpt, &pf, &cr);
 
+	LOCK_FRAME_BUF();		// AGWUsers can be realloc'd by a GUI-thread connect
 	AGW_frame_monitor(snd_ch, path, data, pid, nr, ns, f_type, f_id, rpt, pf, cr, RX);
+	UNLOCK_FRAME_BUF();
 	
 //	if (RX)
 //		AGW_Raw_monitor(snd_ch, frame);
