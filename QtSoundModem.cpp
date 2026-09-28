@@ -4170,9 +4170,10 @@ extern "C" void startpttOnTimer()
 
 // Set when a TX chunk aborts because the sink stopped or wedged; the
 // rest of that transmission's chunks then return at once instead of
-// each waiting another 2 s with PTT keyed. Worker thread only; cleared
-// at the next PTT-on (RadioPTT -> StartWatchdog).
-static bool s_txAborted = false;
+// each waiting another 2 s with PTT keyed. Cleared at the next PTT-on
+// (RadioPTT -> StartWatchdog). Atomic: in UDP-server mode RadioPTT and
+// SendtoCard also run on the GUI thread.
+static std::atomic<bool> s_txAborted{false};
 
 extern "C" void StartWatchdog()
 {
@@ -4579,8 +4580,8 @@ void QtSoundModem::StartWatchdog()
 		 if (SoundIsPlaying)
 		 {
 			SoundIsPlaying = 0;
+			s_outRecoveries = 0;	// a TX drained: sink works again
 		 }
-		 s_outRecoveries = 0;		// sink works again
 		 break;
 
 
@@ -5046,6 +5047,12 @@ void QtSoundModem::StartWatchdog()
 
  void QtSoundModem::initializeAudioIn(const QAudioDevice &deviceInfo)
  {
+	 // See initializeAudioOut: don't open over a live stream.
+	 if (m_audioInput)
+	 {
+		 Debugprintf("initializeAudioIn: input already open; skipped");
+		 return;
+	 }
 	 // Qt 6 dropped QAudioFormat::setSampleSize / setCodec / setByteOrder /
 	 // setSampleType. Codec is always PCM, byte order is native, and sample
 	 // type + size collapse into a single SampleFormat enum.
@@ -5267,6 +5274,13 @@ void QtSoundModem::StartWatchdog()
  }
  void QtSoundModem::initializeAudioOut(const QAudioDevice &deviceInfo)
  {
+	 // A queued device-change replay can open the stream while a caller
+	 // that is about to open it sits in a modal dialog; don't open twice.
+	 if (m_audioOutput)
+	 {
+		 Debugprintf("initializeAudioOut: output already open; skipped");
+		 return;
+	 }
 	 QAudioFormat format;
 	 format.setSampleRate(12000);
 	 format.setChannelCount(2);
