@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build-and-release:
-    runs-on: macos-14
+    runs-on: macos-26
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       VERSION: ${{ github.ref_name }}
@@ -24,7 +24,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew update
           brew install qt@6 fftw hidapi
 
       - name: Configure

@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: macos-14
+    runs-on: macos-26
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -16,7 +16,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew update
           brew install qt@6 fftw hidapi ffmpeg
 
       - name: Configure
@@ -71,13 +70,11 @@ jobs:
 
   # Sizes the warning debt; never fails the run.
   warnings:
-    runs-on: macos-14
+    runs-on: macos-26
     continue-on-error: true
     steps:
       - uses: actions/checkout@v5
-      - run: |
-          brew update
-          brew install qt@6 fftw hidapi
+      - run: brew install qt@6 fftw hidapi
       - shell: bash
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DQSM_WARNINGS=ON \
