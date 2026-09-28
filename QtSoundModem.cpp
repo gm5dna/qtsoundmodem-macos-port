@@ -4147,16 +4147,11 @@ extern "C" void startpttOnTimer()
 }
 
 
-// Set when a TX chunk aborts because the sink stopped or wedged; the
-// rest of that transmission's chunks then return at once instead of
-// each waiting another 2 s with PTT keyed. Cleared at the next PTT-on
-// (RadioPTT -> StartWatchdog). Atomic: in UDP-server mode RadioPTT and
-// SendtoCard also run on the GUI thread.
-static std::atomic<bool> s_txAborted{false};
+extern "C" void qtAudioTxStart();
 
 extern "C" void StartWatchdog()
 {
-	s_txAborted = false;
+	qtAudioTxStart();
 	// Get Monotonic clock for PTT drop time calculation
 
 #ifndef WIN32
@@ -5460,6 +5455,18 @@ void QtSoundModem::StartWatchdog()
  // amortise the per-read overhead, small enough that the worker-thread
  // poll cadence stays responsive.
  static const int kAudioPeriodBytes = 1024;
+
+// Set when a TX chunk aborts because the sink stopped or wedged; the
+// rest of that transmission's chunks then return at once instead of
+// each waiting another 2 s with PTT keyed. Cleared at the next PTT-on
+// (RadioPTT -> StartWatchdog -> qtAudioTxStart). Atomic: in UDP-server mode RadioPTT and
+// SendtoCard also run on the GUI thread.
+static std::atomic<bool> s_txAborted{false};
+
+extern "C" void qtAudioTxStart()
+{
+	s_txAborted = false;
+}
 
  extern "C" unsigned short * sendSamplestoQSound(unsigned short * buf, int n)
  {
