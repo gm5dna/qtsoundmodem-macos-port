@@ -2698,6 +2698,9 @@ static QByteArray s_lastWarnedRetuneOut;
 // slot bail out cleanly; the next legitimate device-list event
 // after the retune finishes will deliver an up-to-date snapshot.
 static int s_retuneInProgress = 0;
+// An event skipped during a retune is replayed (queued) once the last
+// retune unwinds, so e.g. an unplug during a retune warning isn't lost.
+static bool s_devChangeDeferred = false;
 #endif
 
 void QtSoundModem::deviceaccept()
@@ -4597,7 +4600,22 @@ void QtSoundModem::StartWatchdog()
      // Re-entry guard — see s_retuneInProgress declaration. RAII so
      // an early return / exception in the body still decrements.
      ++s_retuneInProgress;
-     struct RetuneGuard { int *p; ~RetuneGuard(){ --*p; } } guard{&s_retuneInProgress};
+     struct RetuneGuard
+     {
+         int *p;
+         QtSoundModem *w;
+         ~RetuneGuard()
+         {
+             // Queued, so it runs after the caller (deviceaccept /
+             // QtSoundInit) has reopened its streams.
+             if (--*p == 0 && s_devChangeDeferred)
+             {
+                 s_devChangeDeferred = false;
+                 QMetaObject::invokeMethod(w, &QtSoundModem::onAudioDevicesChanged,
+                     Qt::QueuedConnection);
+             }
+         }
+     } guard{&s_retuneInProgress, this};
 
      char errBuf[256] = {0};
      double chosenRate = 0.0;
@@ -4786,10 +4804,10 @@ void QtSoundModem::StartWatchdog()
 	 // the deviceaccept path the caller has already torn them down)
 	 // and hit the auto-reopen branches below, opening streams the
 	 // caller is about to open itself — duplicate CoreAudio open.
-	 // Skip; the next legitimate device-list event after the retune
-	 // unwinds will deliver an up-to-date snapshot.
+	 // Defer: the retune guard replays one event when it unwinds.
 	 if (s_retuneInProgress) {
-		 Debugprintf("onAudioDevicesChanged ignored — retune in progress.");
+		 Debugprintf("onAudioDevicesChanged deferred — retune in progress.");
+		 s_devChangeDeferred = true;
 		 return;
 	 }
 #endif
