@@ -4456,6 +4456,9 @@ void QtSoundModem::StartWatchdog()
 	 }
  }
 
+ // Consecutive automatic output reopens; see audioOutStateChanged.
+ static int s_outRecoveries = 0;
+
  void QtSoundModem::audioOutStateChanged(QAudio::State newState)
  {
 	 // See audioInStateChanged: queued stateChanged can be delivered
@@ -4480,6 +4483,40 @@ void QtSoundModem::StartWatchdog()
 			 Debugprintf("audioOutStateChanged: sink stopped with error %d — Tx aborted",
 				 (int)m_audioOutput->error());
 			 SoundIsPlaying = 0;
+
+			 // A stopped sink never restarts by itself, so every later
+			 // TX would key PTT with no audio. Reopen the same device
+			 // once things settle. Deferred (never inline: this slot can
+			 // run inside start() with s_audioMutex held) and capped so a
+			 // persistently failing device doesn't loop; the count resets
+			 // when a TX drains normally (IdleState below). A device that
+			 // has gone away is handled by onAudioDevicesChanged instead.
+			 static bool s_recoveryPending = false;
+			 if (!s_recoveryPending && s_outRecoveries < 3)
+			 {
+				 s_recoveryPending = true;
+				 s_outRecoveries++;
+				 QTimer::singleShot(2000, this, [this]()
+				 {
+					 s_recoveryPending = false;
+					 if (!m_audioOutput || outDeviceInfo.isNull())
+						 return;
+					 if (m_audioOutput->state() != QAudio::StoppedState)
+						 return;
+					 Debugprintf("audioOutStateChanged: reopening output '%s' (attempt %d)",
+						 outDeviceInfo.description().toUtf8().constData(), s_outRecoveries);
+					 {
+						 QMutexLocker locker(&s_audioMutex);
+						 disconnect(m_audioOutput, &QAudioSink::stateChanged,
+							 this, &QtSoundModem::audioOutStateChanged);
+						 m_audioOutput->stop();
+						 out = nullptr;
+						 m_audioOutput->deleteLater();
+						 m_audioOutput = nullptr;
+					 }
+					 initializeAudioOut(outDeviceInfo);
+				 });
+			 }
 		 }
 		 else 
 		 {
@@ -4502,6 +4539,7 @@ void QtSoundModem::StartWatchdog()
 		 {
 			SoundIsPlaying = 0;
 		 }
+		 s_outRecoveries = 0;		// sink works again
 		 break;
 
 
@@ -5252,16 +5290,55 @@ void QtSoundModem::StartWatchdog()
 
 	 qDebug() << "Sample Rate" << format.sampleRate();
 
-	 // See initializeAudioIn for the publication-under-lock rationale.
-	 QMutexLocker locker(&s_audioMutex);
-	 m_audioOutput = new QAudioSink(deviceInfo, format, this);
-	 connect(m_audioOutput, &QAudioSink::stateChanged, this, &QtSoundModem::audioOutStateChanged);
+	 // See initializeAudioIn for the publication-under-lock rationale,
+	 // and for why a start() failure is torn down here but reported
+	 // only after the lock is dropped.
+	 bool startFailed = false;
+	 QAudio::Error startErr = QAudio::NoError;
+	 {
+		 QMutexLocker locker(&s_audioMutex);
+		 m_audioOutput = new QAudioSink(deviceInfo, format, this);
+		 connect(m_audioOutput, &QAudioSink::stateChanged, this, &QtSoundModem::audioOutStateChanged);
 
-	 m_audioOutput->setBufferSize(16384);
-	 int n = m_audioOutput->bufferSize();
-	 Debugprintf("Output Buffer Size %d", n);
+		 m_audioOutput->setBufferSize(16384);
+		 int n = m_audioOutput->bufferSize();
+		 Debugprintf("Output Buffer Size %d", n);
 
-	 out = m_audioOutput->start();
+		 out = m_audioOutput->start();
+		 startErr = m_audioOutput->error();
+		 if (out == nullptr || startErr != QAudio::NoError)
+		 {
+			 startFailed = true;
+			 disconnect(m_audioOutput, &QAudioSink::stateChanged,
+				 this, &QtSoundModem::audioOutStateChanged);
+			 m_audioOutput->stop();
+			 m_audioOutput->deleteLater();
+			 m_audioOutput = nullptr;
+			 out = nullptr;
+		 }
+	 }
+
+	 if (startFailed)
+	 {
+		 Debugprintf("REFUSED: output device '%s' QAudioSink::start() "
+			 "failed (error %d); TX disabled for this device.",
+			 deviceInfo.description().toUtf8().constData(),
+			 (int)startErr);
+
+		 const QByteArray deviceKey = deviceInfo.id();
+		 if (s_lastWarnedOutDev != deviceKey)
+		 {
+			 s_lastWarnedOutDev = deviceKey;
+			 QMessageBox::warning(this, tr("Audio output not supported"),
+				 tr("The output device \"%1\" could not be started "
+					"(audio system error %2). TX has been disabled "
+					"for this device.\n\nTry another output, or reconnect "
+					"the device and reselect it in the Devices dialog.")
+				 .arg(deviceInfo.description())
+				 .arg((int)startErr));
+		 }
+		 return;
+	 }
 
 	 // Successful open — close the warning gate. See initializeAudioIn.
 	 s_lastWarnedOutDev.clear();
