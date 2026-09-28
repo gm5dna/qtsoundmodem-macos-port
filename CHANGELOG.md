@@ -6,13 +6,42 @@ This fork starts at `mac-0.1.0`. Pre-fork history (upstream tags `0.64`–`0.76`
 
 ## [Unreleased]
 
+### Fixed
+
+- RSID: sliding-window shift used index 1024 instead of 512 and overran its buffer on 48 kHz input (also upstream).
+- KISS: frames queued by KISS clients were added to the TX queue without the frame-buffer lock (also upstream).
+- Over-long GUI or INI strings (Hamlib/FLRig host, PTT strings, digipeater calls, UDP host and others) overflowed fixed buffers; now truncated (also upstream).
+- ARDOP: a second ARDOP channel, or a RUH channel after one, got a fraction of each 48 kHz chunk (also upstream).
+- RUH selected on an input device not at 48 kHz silenced every other channel; they now decode, and the log says RUH needs a 48 kHz device.
+- A crash path when TX started from inside RX processing (`txSleep` re-entering `PollQSound`).
+- A stuck or stopped output device could hold PTT on dead air for minutes on a long frame; the abort now covers the whole transmission.
+- A failed or errored output device is detected and reopened automatically (up to three times) instead of leaving every later TX silent.
+- Devices dialog: selecting between two same-named sound cards, or a device change while the dialog is open, could save and open the wrong device.
+- Device changes during a CoreAudio rate retune were dropped.
+- Races between the GUI and the modem worker on capture reopen, the anti-alias filter, TX completion and the audio gains.
+- Changing a modem type in the main window now applies between chunks on the modem thread (Qt audio).
+- Long IL2P monitor lines were cut at 1023 characters.
+- `--dump-input` WAVs had zero-length headers; `--decode-wav` read past the data chunk.
+
+### Changed
+
+- Qt audio code moved from `QtSoundModem.cpp` into `QtAudio.cpp`.
+- Title bar shows the port version (`0.0.0.76+mac-…`); bundle version follows the release tag.
+- Audio gain sliders apply and save on release instead of on every step.
+- CI builds and runs the decode regression on every push and pull request (macOS 26 runner); the corpus is the `corpus-v1` release asset.
+- The regression runner uses a fixture INI instead of the user's own settings.
+
+### Removed
+
+- Unused files: qmake `.pro`/`.pri`, `makeit`, Windows `.rc` resources, `rsid.cxx`, `LinuxBits.c`, `fftw3.f`, the stale sample INI, a duplicate icon, and the committed release-planning docs.
+
 ## [mac-0.1.1] – 2026-05-17
 
 Consolidates the rx/tx audit fixes and the tooltips / help-menu work onto `macos-port`. Twelve correctness and robustness fixes — four of which also affect upstream — plus in-app help.
 
 ### Added
 
-- Help menu: User Guide, G8BPQ online, "What's This?", and About.
+- Help menu: G8BPQ documentation (online), "What's This?", and About.
 - Hover tooltips throughout: main-window controls (modem mode, centre, RX offset, DCD, audio, waterfall), the Devices / Modem (all tabs) / Calibration dialogs with `?` help buttons, and the Settings / View / Tools menu actions; CWID and modem-dialog filter coverage.
 
 ### Changed
@@ -43,13 +72,13 @@ First tagged release of the macOS port. Builds and runs natively on Apple Silico
 - CMake build with platform-conditional sources, replacing the upstream Qt 5 `.pro` flow.
 - arm64 / Apple Silicon support: POSIX serial / PTT shims (`MacBits.c`), `__ARM_ARCH` guards, native build on macOS 14.
 - macOS bundle plumbing: ad-hoc codesigning the `.app` as a bundle, custom `.icns` icon, libfftw3f bundled into the `.app` for self-containment.
-- `chdir` to `~/Library/Application Support/QtSoundModem` on launch; lazy-init global `QSettings` so config honours the new working directory.
+- `chdir` to `~/Library/Application Support/gm5dna/QtSoundModem` on launch; lazy-init global `QSettings` so config honours the new working directory.
 - Native-rate audio capture with windowed-sinc FIR decimation to 12 kHz (replaces the older boxcar decimator).
 - `--decode-wav` and `--decode-wav-native` offline decode harnesses, including a baseline-locked test corpus for regression checks.
 - CoreAudio nominal-rate retune shim with `AutoRetuneSampleRate` INI flag — opportunistically aligns shared RX/TX devices to a 12 kHz multiple at the Devices-dialog accept, on hot-plug, and at startup; gated to avoid retuning while a stream is live.
 - TX Audio / RX Audio gain sliders.
 - View menu: PSK Constellation show/hide toggle.
-- Tools submenu grouping Calibration and Restart Waterfall.
+- Tools submenu for Calibration.
 - Default CM108 VID/PID on the macOS hidapi path.
 - README for the macos-port branch, with install / build / test notes; Homebrew tap documented as the preferred install route.
 

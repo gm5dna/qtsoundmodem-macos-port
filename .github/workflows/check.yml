@@ -41,7 +41,7 @@ jobs:
       # in git. Cached so most runs never download it.
       - name: Restore corpus
         id: corpus
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/corpus
           key: corpus-v1
