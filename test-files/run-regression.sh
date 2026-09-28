@@ -9,18 +9,13 @@
 # 5-min reference WAVs live — they're large binary files, kept out
 # of the git repo).
 #
-# This script uses the user's existing QtSoundModem configuration
-# at ~/Library/Application Support/gm5dna/QtSoundModem/QtSoundModem.ini
-# — QStandardPaths::AppDataLocation uses getpwuid().pw_dir on macOS
-# and ignores $HOME, so config isolation isn't reliably possible.
+# Config is isolated: test-files/fixture/QtSoundModem.ini (the 4-slot
+# modem config the baselines assume, see expected.txt) is copied to a
+# temp dir and passed via QTSM_CONFIG_DIR, so the user's own INI is
+# never read or modified.
 #
-# To get non-zero decode counts you need at least one modem enabled
-# with the right speed for each test file:
-#   * 02_100-Mic-E-Bursts: AFSK 1200 (SPEED_1200, ModemType=1) on a
-#     non-zero soundChannel.
-#   * g3ruh_9600_5min:     RUH96 (SPEED_RUH96, ModemType=19).
-#   * il2p_300_5min:       300-baud FSK (SPEED_300, ModemType=0)
-#     with IL2P=1 in the matching AX25_<port> section.
+# Set DECODE_LOG=/path/file to also append every decoded frame, so two
+# builds can be diffed frame-for-frame, not just by count.
 #
 # Usage: test-files/run-regression.sh
 #   (or with explicit paths: BIN=/path/to/QtSoundModem
@@ -46,7 +41,7 @@ fi
 
 if [ ! -x "${BIN}" ]; then
 	echo "ERROR: QtSoundModem binary not found at ${BIN}" >&2
-	echo "       Build first: cmake --build ${REPO_ROOT}/QtSoundModem/build" >&2
+	echo "       Build first: cmake --build ${REPO_ROOT}/build" >&2
 	exit 2
 fi
 
@@ -57,6 +52,10 @@ fi
 
 TMPDIR_REG=$(mktemp -d)
 trap 'rm -rf "${TMPDIR_REG}"' EXIT
+
+mkdir "${TMPDIR_REG}/config"
+cp "${SCRIPT_DIR}/fixture/QtSoundModem.ini" "${TMPDIR_REG}/config/"
+export QTSM_CONFIG_DIR="${TMPDIR_REG}/config"
 
 # Convert FLAC references to a 48 kHz canonical PCM WAV the harness
 # can consume. Cached in $TMPDIR_REG, dropped on script exit.
@@ -108,9 +107,14 @@ run_one() {
 
 	# `< /dev/null` on the binary too — same stdin-stealing concern
 	# as ffmpeg above.
-	local count
-	count=$("${BIN}" "${flag}" "${input}" </dev/null 2>&1 \
-		| grep -c "^DECODED \[RX\]" || true)
+	local decoded count
+	decoded=$("${BIN}" "${flag}" "${input}" </dev/null 2>&1 \
+		| grep "^DECODED \[RX\]" || true)
+	count=$(printf '%s' "${decoded}" | grep -c . || true)
+	if [ -n "${DECODE_LOG:-}" ] && [ -n "${decoded}" ]; then
+		printf '%s\n' "${decoded}" | sed -E -e 's/\[[0-9]{2}:[0-9]{2}:[0-9]{2}[RT]\]//' \
+			-e "s|^|${file} ${mode}: |" >> "${DECODE_LOG}"
+	fi
 
 	if [ "${count}" -ge "${expected_min}" ]; then
 		printf "PASS  %-55s [%-6s] decoded %4d (>= %d)\n" "${file}" "${mode}" "${count}" "${expected_min}"
