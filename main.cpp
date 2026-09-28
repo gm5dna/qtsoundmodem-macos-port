@@ -170,9 +170,12 @@ int main(int argc, char *argv[])
 	// path. Linux/Windows users launch from the install dir so the
 	// cwd happens to be writable; a Finder-launched .app has cwd=/
 	// and QSettings::AccessError fires on first save. chdir into the
-	// AppDataLocation subdir before any QSettings call.
-	QString macConfigDir = QStandardPaths::writableLocation(
-		QStandardPaths::AppDataLocation);
+	// AppDataLocation subdir before any QSettings call. QTSM_CONFIG_DIR
+	// overrides it so the regression runner / CI can use a fixture INI.
+	QString macConfigDir = qEnvironmentVariable("QTSM_CONFIG_DIR");
+	if (macConfigDir.isEmpty())
+		macConfigDir = QStandardPaths::writableLocation(
+			QStandardPaths::AppDataLocation);
 	if (!macConfigDir.isEmpty())
 	{
 		QDir().mkpath(macConfigDir);
