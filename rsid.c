@@ -281,8 +281,11 @@ void RSIDProcessSamples(short * Samples, int nSamples)
 	if (in == 0)			// Not initialised
 		return;
 
-	memcpy(&savedSamples[savedSampLen], Samples, nSamples * sizeof(short));
-	savedSampLen += nSamples;
+	// Samples is interleaved stereo (nSamples frames). Take the left
+	// channel, as the ARDOP and UDP paths in BufferFull do.
+
+	for (int i = 0; i < nSamples; i++)
+		savedSamples[savedSampLen++] = Samples[2 * i];
 
 	while (savedSampLen >= 512 * 2)				// Old + New
 	{
