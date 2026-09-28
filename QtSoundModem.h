@@ -87,6 +87,7 @@ private slots:
 	void audioInStateChanged(QAudio::State newState);
 	void audioOutStateChanged(QAudio::State newState);
 	void QtSoundInit();
+	void reopenQSound();
 	void initializeAudioIn(const QAudioDevice & deviceInfo);
 	void initializeAudioOut(const QAudioDevice & deviceInfo);
 	void onAudioDevicesChanged();
