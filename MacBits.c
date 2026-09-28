@@ -756,6 +756,15 @@ void debugDecodeWav(const char * path)
 	extern int pnt_change[5];
 	for (int i = 0; i < 4; i++) pnt_change[i] = 1;
 
+	// Mirror the constructor: an enabled RUH modem sets using48000 in
+	// the live app whatever the device rate, so a non-48 kHz device
+	// takes this FIR path with using48000 = 1. Leaving it 0 here hid
+	// that combination from the regression.
+	using48000 = 0;
+	for (int i = 0; i < 4; i++)
+		if (soundChannel[i] && (speed[i] == SPEED_RUH48 || speed[i] == SPEED_RUH96))
+			using48000 = 1;
+
 	// Process in 512-output-frame chunks (matches PollQSound).
 	const int inFramesPerChunk = 512 * decim;
 	// Stack buffers sized for decim up to 8 (96 kHz → 12 kHz).
