@@ -23,6 +23,7 @@ jobs:
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
+            -DQSM_STRICT=ON \
             -DCMAKE_PREFIX_PATH="$(brew --prefix qt@6)"
 
       - name: Build
@@ -80,7 +81,7 @@ jobs:
             qt6-base-dev qt6-multimedia-dev qt6-serialport-dev \
             libfftw3-dev libasound2-dev libpulse-dev
       - run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DQSM_STRICT=ON
           cmake --build build --parallel
 
   # Sizes the warning debt; never fails the run.
