@@ -86,6 +86,29 @@ mildly visible-on-air quirks at 300 baud:
   the current frame completes. Wait for PTT to drop before assuming
   the new value is live.
 
+### AGW port numbering
+
+The AGW port byte is the modem slot: port 0 is modem A, 1 is B, and so
+on, with all four ports always listed. Upstream compresses the list
+past disabled modems (with only A and D enabled, D is port 1). Clients
+set up against upstream's numbering need their port changed; BPQ's
+`CHANNEL=A/B/C/D` already matches this fork.
+
+## Testing
+
+`test-files/run-regression.sh` decodes a reference corpus with the
+`--decode-wav` harness and checks packet counts against
+`test-files/expected.txt`. It uses its own modem config
+(`test-files/fixture/QtSoundModem.ini`), never yours. The corpus is the
+`corpus-v1` release asset; unpack it and point `CORPUS_DIR` at it:
+
+```
+gh release download corpus-v1 -R gm5dna/qtsoundmodem-macos-port -O - | tar -xz -C /tmp/corpus
+CORPUS_DIR=/tmp/corpus test-files/run-regression.sh
+```
+
+CI runs the same check on every push and pull request.
+
 ## Issues
 
 Personal maintenance fork, no support guarantee. macOS-side bugs are
