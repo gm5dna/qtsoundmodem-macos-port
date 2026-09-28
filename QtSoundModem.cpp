@@ -1461,7 +1461,7 @@ void QtSoundModem::clickedSlotI(int i)
 	if (strcmp(Name, "TXAudio") == 0)
 	{
 		char valChar[32];
-		txAudioLevel = i;
+		__atomic_store_n(&txAudioLevel, i, __ATOMIC_RELAXED);	// the worker reads it
 		sprintf(valChar, "TX Audio %d%%", txAudioLevel);
 		ui.TXAudioLabel->setText(valChar);
 		saveSettings();
@@ -1471,7 +1471,7 @@ void QtSoundModem::clickedSlotI(int i)
 	if (strcmp(Name, "RXAudio") == 0)
 	{
 		char valChar[32];
-		rxAudioLevel = i;
+		__atomic_store_n(&rxAudioLevel, i, __ATOMIC_RELAXED);	// the worker reads it
 		sprintf(valChar, "RX Audio %d%%", rxAudioLevel);
 		ui.RXAudioLabel->setText(valChar);
 		saveSettings();

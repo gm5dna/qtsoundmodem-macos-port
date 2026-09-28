@@ -471,6 +471,7 @@ short * SoundInit(void)
 }
 
 extern int isAudioOutputOpen(void);
+extern void qtAudioConsumeSinkIdle(void);
 
 void SoundFlush(void)
 {
@@ -505,8 +506,8 @@ void SoundFlush(void)
 	}
 
 	// Wait for QAudioSink to reach IdleState. The
-	// audioOutStateChanged slot in QtSoundModem.cpp clears
-	// SoundIsPlaying when the sink signals IdleState. 1 s is a
+	// audioOutStateChanged slot (QtAudio.cpp) flags IdleState and
+	// qtAudioConsumeSinkIdle clears SoundIsPlaying here. 1 s is a
 	// generous bound: a 1200-sample frame at 12 kHz drains in
 	// ~100 ms, and even RUH 9600 at 48 kHz drains in ~100 ms.
 	// The previous 5 s ceiling meant up to 5 s of PTT-on dead
@@ -524,6 +525,7 @@ void SoundFlush(void)
 	while (SoundIsPlaying && elapsed < 1000)
 	{
 		usleep(10000); // 10 ms
+		qtAudioConsumeSinkIdle();	// the sink's IdleState, raised on the GUI thread
 		elapsed = getTicks() - started;
 	}
 
