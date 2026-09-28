@@ -1640,6 +1640,8 @@ void ProcessPktFrame(int snd_ch, UCHAR * Data, int frameLen)
 
 	stringAdd(pkt, Data, frameLen + 2);			// 2 for crc (not actually there)
 
+	LOCK_FRAME_BUF();
 	analiz_frame(snd_ch, pkt, "ARDOP", 1);
+	UNLOCK_FRAME_BUF();
 
 }

@@ -1178,7 +1178,9 @@ void BufferFull(short * Samples, int nSamples)			// These are Stereo Samples
 
 	if (__atomic_load_n(&TimerEvent, __ATOMIC_ACQUIRE) == TIMER_EVENT_ON)	// set by the GUI timer
 	{
+		LOCK_FRAME_BUF();	// L2 timers vs AGW input on the GUI thread
 		timer_event();
+		UNLOCK_FRAME_BUF();
 //		timer_event2();
 	}
 }

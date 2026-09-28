@@ -262,7 +262,9 @@ void mynet::onAGWConnection()
 
 	_AGWSockets.push_back(clientSocket);
 
+	LOCK_FRAME_BUF();		// AGW/L2 state is shared with the modem worker
 	AGW_add_socket(clientSocket);
+	UNLOCK_FRAME_BUF();
 
 	Debugprintf("AGW Connect Sock %x", clientSocket);
 }
@@ -275,7 +277,9 @@ void mynet::onAGWSocketStateChanged(QAbstractSocket::SocketState socketState)
 	{
 		QTcpSocket* sender = static_cast<QTcpSocket*>(QObject::sender());
 
+		LOCK_FRAME_BUF();
 		AGW_del_socket(sender);
+		UNLOCK_FRAME_BUF();
 
 		_AGWSockets.removeOne(sender);
 	}
@@ -286,7 +290,9 @@ void mynet::onAGWReadyRead()
 	QTcpSocket* sender = static_cast<QTcpSocket*>(QObject::sender());
 	QByteArray datas = sender->readAll();
 
+	LOCK_FRAME_BUF();		// sessions, TX queues, registered calls
 	AGW_explode_frame(sender, datas.data(), datas.length());
+	UNLOCK_FRAME_BUF();
 }
 
 void mynet::on6PackReadyRead()

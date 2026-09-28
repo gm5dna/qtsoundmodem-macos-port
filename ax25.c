@@ -227,7 +227,19 @@ TStringList all_frame_buf[5];
 // are no-ops there (see UZ7HOStuff.h) so the race lives on there
 // until separately addressed with a CRITICAL_SECTION-based path.
 #ifndef _WIN32
-pthread_mutex_t all_frame_buf_mutex = PTHREAD_MUTEX_INITIALIZER;
+// Recursive: it also guards AGW/L2 session state, and several paths
+// that already hold it re-enter (AGW M/K frames, Digipeater, the TX
+// monitor calls). Initialised before main(); POSIX has no portable
+// static recursive initializer.
+pthread_mutex_t all_frame_buf_mutex;
+__attribute__((constructor)) static void init_all_frame_buf_mutex(void)
+{
+	pthread_mutexattr_t a;
+	pthread_mutexattr_init(&a);
+	pthread_mutexattr_settype(&a, PTHREAD_MUTEX_RECURSIVE);
+	pthread_mutex_init(&all_frame_buf_mutex, &a);
+	pthread_mutexattr_destroy(&a);
+}
 #endif
 
 typedef struct registeredCalls_t
