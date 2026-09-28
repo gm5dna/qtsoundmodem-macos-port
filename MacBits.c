@@ -26,21 +26,17 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 // QSM_COMMON_SOURCES once Linux.c / ALSASound.c / pulse.c / audio.c are
 // excluded:
 //
-//   Debugprintf  - variadic logging, forwards to WriteDebugLog (defined
-//                  in QtSoundModem.cpp:273, which routes to qDebug()).
+//   Debugprintf  - variadic logging, forwards to WriteDebugLog
+//                  (QtSoundModem.cpp, which routes to qDebug()).
 //   platformInit - SIGINT/SIGTERM handlers that flip the global Closing
 //                  flag, plus SIGPIPE/SIGHUP ignore. Mirrors Linux.c.
 //   txSleep      - paces the Qt audio output buffer in
-//                  sendSamplestoQSound(). Mirrors the Linux variant's
-//                  drain-while-waiting pattern, calling PollQSound()
-//                  (the Qt-input equivalent of PollReceivedSamples)
-//                  to keep input from backlogging during long TX
-//                  bursts. Both txSleep and PollQSound run on
-//                  workerThread (tcpCode.cpp), not the GUI thread.
+//                  sendSamplestoQSound(), draining capture via
+//                  PollQSound() (QtAudio.cpp) while it waits.
 //   Sleep        - mS-granularity sleep primitive used by txSleep.
 //   stricmp      - case-insensitive strcmp; macOS libc has strcasecmp
 //                  but not the Microsoft-style stricmp the codebase
-//                  calls.
+//                  calls (this one also tolerates a NULL first arg).
 //   memicmp      - case-insensitive memcmp.
 //   OpenCOMPort, CloseCOMPort, WriteCOMBlock,
 //   COMSetRTS, COMClearRTS, COMSetDTR, COMClearDTR
@@ -57,16 +53,9 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 //                  own these on Linux/Windows; on macOS the Qt path
 //                  fills the arrays at runtime from QMediaDevices.
 //
-// Deliberately NOT provided here:
-//   - GPIO functions (gpioInitialise, gpioWrite, gpioSetMode,
-//     SetupGPIOPTT). The call sites in SMMain.c are guarded by the
-//     same __ARM_ARCH-only macro that commit 3 tightened in
-//     LinuxBits.c; this commit tightens those guards too, so the GPIO
-//     symbols are not referenced from the macOS build.
-//   - Audio entry points (InitSound, CloseSound, GetSoundDevices).
-//     Commit 6 forces SoundMode == 5 on macOS and routes through the
-//     existing Qt Multimedia path in QtSoundModem.cpp; whether stubs
-//     or call-site re-routing are needed is settled there.
+// Not provided: GPIO (the SMMain.c call sites are Linux-ARM only) and the
+// ALSA/Windows audio entry points; macOS forces SoundMode 5, the Qt
+// Multimedia path in QtAudio.cpp.
 
 #include <limits.h>
 #include <stdarg.h>
