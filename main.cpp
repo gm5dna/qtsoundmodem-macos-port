@@ -265,7 +265,16 @@ int main(int argc, char *argv[])
 
 	m1.start();				// Start TCP 
 
-	return a->exec();
+	int rc = a->exec();
+
+	// Stop the worker before exit runs static destructors under it,
+	// then save here: saveSettings reads widget geometry and may show
+	// a QMessageBox, both GUI-thread only. (A window close returns from
+	// exec() before the worker has seen Closing.)
+	Closing = 1;
+	t->wait(3000);
+	saveSettings();
+	return rc;
 
 }
 

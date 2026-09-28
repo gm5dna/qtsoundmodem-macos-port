@@ -977,10 +977,7 @@ void workerThread::run()
 		this->msleep(10);
 	}
 
-	qDebug() << "Saving Settings";
-
-	saveSettings();
-
+	// Settings are saved by main() on the GUI thread once this returns.
 	qDebug() << "Main Loop exited";
 
 	qApp->exit();
