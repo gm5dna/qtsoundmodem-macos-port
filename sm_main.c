@@ -1250,7 +1250,7 @@ end;
 
 #define	NODES_SIG	0xFF
 
-char FrameData[1024] = "";
+char FrameData[2048] = "";		// matches mon_frm[2048] in frame_monitor
 
 char * frame_monitor(string * frame, char * code, int tx_stat)
 {
