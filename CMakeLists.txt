@@ -1,41 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
-# QtSoundModem — macOS-port CMake build.
-#
-# Buildability across the macos-port commit series (this is commit 5 of 6):
-#   commit 2: cmake configure clean on macOS; compile/link fails by design.
-#   commit 3: tighten LinuxBits.c __ARM_ARCH guard.
-#   commit 4: add MacBits.c (POSIX + serial PTT shims); tighten SMMain.c
-#             __ARM_ARCH guards so Pi GPIO symbols are not referenced.
-#   commit 5 (this commit): migrate Qt Multimedia Qt5 → Qt6 in
-#                           QtSoundModem.{cpp,h} + Config.cpp; add audio
-#                           device-name storage to MacBits.c. Also fixes
-#                           Qt 6 / macOS toolchain collisions that surface
-#                           when the Qt5-API errors clear: UZ7HOStuff.h's
-#                           Byte/Word/etc. macros become typedefs (Qt 6
-#                           uses 'Byte' as a template parameter name);
-#                           tcpCode.cpp / ax25.c htonl forward decls are
-#                           skipped on __APPLE__ (macOS implements them
-#                           as macros); il2p.c popcount fallbacks are
-#                           skipped on clang/gcc; rsid.c includes
-#                           <stdlib.h> instead of <malloc.h> on macOS.
-#                           Every TU compiles. Link still fails — symbols
-#                           routed through ALSASound.c / Linux.c (e.g.
-#                           InitSound, SoundInit, SoundFlush, SendtoCard,
-#                           getTicks, PollReceivedSamples, plus storage
-#                           globals SoundMode / ReceiveSize / SendSize /
-#                           onlyMixSnoop / txLatency / pttclk /
-#                           CaptureIndex / PlayBackIndex / using48000 /
-#                           useTimedPTT / CurrentLevel / CurrentLevelR /
-#                           initPulse / printtick) are deferred to
-#                           commit 6.
-#   commit 6: add hid_mac.c, MacPermissions.mm, default SoundMode=5 on macOS;
-#             provide MacBits.c stubs/storage for the symbols listed above;
-#             at this point the macOS bundle compiles, links, and runs.
-#
-# The qmake .pro file is intentionally retained — upstream's Linux + Windows
-# qmake build remains untouched. CMake also configures on Linux so this file
-# isn't dead weight when rebasing on upstream master.
+# QtSoundModem — CMake build for the macOS port (also configures on
+# Linux). Upstream's qmake/Visual Studio files are not carried here.
 
 # Apple Silicon-only target for the macOS port. Set before project()
 # so CMake's compiler probe runs against the right architecture and
@@ -160,9 +126,8 @@ set(QSM_RESOURCES
 
 # Platform-specific audio / OS-shim sources.
 #
-# Sources excluded from the macOS build (kept in tree so upstream
-# rebases stay clean): ALSASound.c, pulse.c, audio.c, Linux.c,
-# LinuxBits.c, Waveout.c, hid.c.
+# Not built on macOS (kept for upstream rebases): ALSASound.c, pulse.c,
+# audio.c, Linux.c (Linux only), Waveout.c, hid.c.
 set(QSM_PLATFORM_SOURCES "")
 if(APPLE)
     list(APPEND QSM_PLATFORM_SOURCES
@@ -180,24 +145,51 @@ if(UNIX AND NOT APPLE)
     )
 endif()
 
-# Bundle target on macOS, plain executable elsewhere.
+add_executable(QtSoundModem
+    ${QSM_COMMON_SOURCES}
+    ${QSM_PLATFORM_SOURCES}
+    ${QSM_HEADERS}
+    ${QSM_FORMS}
+    ${QSM_RESOURCES}
+)
+
+# Port version, appended to upstream's VersionString in the title bar
+# (0.0.0.76+mac-0.1.2).
+# CI passes the tag; local builds use git describe, evaluated at
+# configure time (re-run cmake to refresh). --match keeps non-release
+# tags such as corpus-v1 out.
+set(QTSM_MAC_VERSION "" CACHE STRING "Port version, e.g. mac-0.1.2 (default: git describe)")
+set(QSM_MAC_VERSION "${QTSM_MAC_VERSION}")
+if(NOT QSM_MAC_VERSION)
+    execute_process(
+        COMMAND git describe --tags --match "mac-*" --dirty
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        OUTPUT_VARIABLE QSM_MAC_VERSION
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
+endif()
+if(QSM_MAC_VERSION)
+    target_compile_definitions(QtSoundModem PRIVATE "QSM_MAC_SUFFIX=\"+${QSM_MAC_VERSION}\"")
+else()
+    target_compile_definitions(QtSoundModem PRIVATE "QSM_MAC_SUFFIX=\"\"")
+endif()
+# CFBundle versions must be numeric: mac-0.1.1-3-gabc1234 -> 0.1.1.
+string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" QSM_BUNDLE_VERSION "${QSM_MAC_VERSION}")
+if(NOT QSM_BUNDLE_VERSION)
+    set(QSM_BUNDLE_VERSION "${PROJECT_VERSION}")
+endif()
+
+# macOS: make it a .app bundle.
 if(APPLE)
     set(QSM_MACOS_ICON "${CMAKE_SOURCE_DIR}/macos/QtSoundModem.icns")
 
-    add_executable(QtSoundModem MACOSX_BUNDLE
-        ${QSM_COMMON_SOURCES}
-        ${QSM_PLATFORM_SOURCES}
-        ${QSM_HEADERS}
-        ${QSM_FORMS}
-        ${QSM_RESOURCES}
-    )
-
     set_target_properties(QtSoundModem PROPERTIES
+        MACOSX_BUNDLE                  TRUE
         MACOSX_BUNDLE_INFO_PLIST       "${CMAKE_SOURCE_DIR}/macos/Info.plist.in"
         MACOSX_BUNDLE_GUI_IDENTIFIER   "com.gm5dna.qtsoundmodem"
         MACOSX_BUNDLE_BUNDLE_NAME      "QtSoundModem"
-        MACOSX_BUNDLE_BUNDLE_VERSION   "${PROJECT_VERSION}"
-        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_BUNDLE_VERSION   "${QSM_BUNDLE_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${QSM_BUNDLE_VERSION}"
         MACOSX_BUNDLE_COPYRIGHT        "Copyright (C) 2019-2024 UZ7HO, G8BPQ contributors"
         MACOSX_BUNDLE_ICON_FILE        "QtSoundModem.icns"
     )
@@ -219,14 +211,6 @@ if(APPLE)
     )
 
     include("${CMAKE_SOURCE_DIR}/cmake/macdeployqt.cmake")
-else()
-    add_executable(QtSoundModem
-        ${QSM_COMMON_SOURCES}
-        ${QSM_PLATFORM_SOURCES}
-        ${QSM_HEADERS}
-        ${QSM_FORMS}
-        ${QSM_RESOURCES}
-    )
 endif()
 
 target_link_libraries(QtSoundModem PRIVATE
@@ -286,7 +270,6 @@ if(APPLE)
     # for kAudioDevicePropertyNominalSampleRate and dispatch_*. AppKit /
     # IOKit / Metal already arrive via Qt.
     find_library(AVFOUNDATION_FRAMEWORK AVFoundation REQUIRED)
-    find_library(COREMEDIA_FRAMEWORK   CoreMedia    REQUIRED)
     find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
     find_library(COREAUDIO_FRAMEWORK   CoreAudio    REQUIRED)
     find_library(FOUNDATION_FRAMEWORK  Foundation   REQUIRED)
@@ -294,7 +277,6 @@ if(APPLE)
     target_link_libraries(QtSoundModem PRIVATE
         "${HIDAPI_LIBRARY}"
         "${AVFOUNDATION_FRAMEWORK}"
-        "${COREMEDIA_FRAMEWORK}"
         "${COREFOUNDATION_FRAMEWORK}"
         "${COREAUDIO_FRAMEWORK}"
         "${FOUNDATION_FRAMEWORK}")

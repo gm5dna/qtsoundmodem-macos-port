@@ -110,9 +110,9 @@ int main(int argc, char *argv[])
 	}
 
 	if (nonGUIMode)
-		sprintf(Title, "QtSoundModem Version %s Running in non-GUI Mode", VersionString);
+		sprintf(Title, "QtSoundModem Version %s" QSM_MAC_SUFFIX " Running in non-GUI Mode", VersionString);
 	else
-		sprintf(Title, "QtSoundModem Version %s Running in GUI Mode", VersionString);
+		sprintf(Title, "QtSoundModem Version %s" QSM_MAC_SUFFIX " Running in GUI Mode", VersionString);
 
 	qDebug() << Title;
 
@@ -247,7 +247,7 @@ int main(int argc, char *argv[])
 		w = new QtSoundModem();
 
 		char Title[128];
-		sprintf(Title, "QtSoundModem Version %s Ports %d%s/%d%s", VersionString, AGWPort, AGWServ ? "*" : "", KISSPort, KISSServ ? "*" : "");
+		sprintf(Title, "QtSoundModem Version %s" QSM_MAC_SUFFIX " Ports %d%s/%d%s", VersionString, AGWPort, AGWServ ? "*" : "", KISSPort, KISSServ ? "*" : "");
 		w->setWindowTitle(Title);
 
 		w->show();

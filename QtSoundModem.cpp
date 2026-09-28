@@ -3084,7 +3084,7 @@ void QtSoundModem::deviceaccept()
 	// Reset title and tooltip in case ports changed 
 
 	char Title[128];
-	sprintf(Title, "QtSoundModem Version %s Ports %d%s/%d%s", VersionString, AGWPort, AGWServ ? "*": "", KISSPort, KISSServ ? "*" : "");
+	sprintf(Title, "QtSoundModem Version %s" QSM_MAC_SUFFIX " Ports %d%s/%d%s", VersionString, AGWPort, AGWServ ? "*": "", KISSPort, KISSServ ? "*" : "");
 	w->setWindowTitle(Title);
 
 	sprintf(Title, "QtSoundModem %d %d", AGWPort, KISSPort);
