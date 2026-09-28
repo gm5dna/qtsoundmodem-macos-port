@@ -4127,8 +4127,15 @@ extern "C" void startpttOnTimer()
 }
 
 
+// Set when a TX chunk aborts because the sink stopped or wedged; the
+// rest of that transmission's chunks then return at once instead of
+// each waiting another 2 s with PTT keyed. Worker thread only; cleared
+// at the next PTT-on (RadioPTT -> StartWatchdog).
+static bool s_txAborted = false;
+
 extern "C" void StartWatchdog()
 {
+	s_txAborted = false;
 	// Get Monotonic clock for PTT drop time calculation
 
 #ifndef WIN32
@@ -5325,6 +5332,9 @@ void QtSoundModem::StartWatchdog()
 
  extern "C" unsigned short * sendSamplestoQSound(unsigned short * buf, int n)
  {
+	 if (s_txAborted)
+		 return buf;
+
 	 // Hot-unplug guard: onAudioDevicesChanged / closeQSound null
 	 // m_audioOutput and out under s_audioMutex when the active
 	 // device disappears or is replaced. We hold the lock across
@@ -5381,11 +5391,13 @@ void QtSoundModem::StartWatchdog()
 		 if (state == QAudio::StoppedState || err != QAudio::NoError)
 		 {
 			 Debugprintf("sendSamplestoQSound: sink stopped (state=%d err=%d) — aborting Tx", (int)state, (int)err);
+			 s_txAborted = true;
 			 return buf;
 		 }
 		 if (getTicks() - waitStartedMs > kStuckMs)
 		 {
 			 Debugprintf("sendSamplestoQSound: bytesFree wedged at %d after %u ms (need %d) — aborting Tx", frames, getTicks() - waitStartedMs, n);
+			 s_txAborted = true;
 			 return buf;
 		 }
 		 txSleep(10);
