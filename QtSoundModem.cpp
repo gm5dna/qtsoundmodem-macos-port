@@ -2471,12 +2471,15 @@ void QtSoundModem::doDevices()
 			i < outputDevicesFiltered.size() ? outputDevicesFiltered[i].id() : QByteArray());
 
 #if defined(Q_OS_MACOS)
+	// Saved id first, then exact name, then upstream's substring match.
 	i = PlaybackDeviceId[0] ? Dev->outputDevice->findData(QByteArray::fromBase64(PlaybackDeviceId)) : -1;
 	if (i == -1)
 		i = Dev->outputDevice->findText(PlaybackDevice, Qt::MatchFixedString);
 	if (i == -1)
-#endif
+		i = Dev->outputDevice->findText(PlaybackDevice, Qt::MatchContains);
+#else
 	i = Dev->outputDevice->findText(PlaybackDevice, Qt::MatchContains);
+#endif
 
 
 	if (i == -1)
@@ -2494,12 +2497,15 @@ void QtSoundModem::doDevices()
 			i < inputDevicesFiltered.size() ? inputDevicesFiltered[i].id() : QByteArray());
 
 #if defined(Q_OS_MACOS)
+	// Saved id first, then exact name, then upstream's substring match.
 	i = CaptureDeviceId[0] ? Dev->inputDevice->findData(QByteArray::fromBase64(CaptureDeviceId)) : -1;
 	if (i == -1)
 		i = Dev->inputDevice->findText(CaptureDevice, Qt::MatchFixedString);
 	if (i == -1)
-#endif
+		i = Dev->inputDevice->findText(CaptureDevice, Qt::MatchContains);
+#else
 	i = Dev->inputDevice->findText(CaptureDevice, Qt::MatchContains);
+#endif
 
 	if (i == -1)
 	{
