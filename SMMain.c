@@ -790,7 +790,7 @@ void DoTX(int Chan)
 					}
 					else
 					{
-						// Just remove control
+						// Just remove control 
 
 						mydelete(myTemp, 0, 1);
 					}
@@ -915,7 +915,7 @@ void DoTX(int Chan)
 		}
 		else
 		{
-			// Just remove control
+			// Just remove control 
 
 			mydelete(myTemp, 0, 1);
 		}
@@ -961,7 +961,7 @@ void DoTX(int Chan)
 		}
 		else
 		{
-			// Just remove control
+			// Just remove control 
 
 			mydelete(myTemp, 0, 1);
 		}

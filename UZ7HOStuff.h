@@ -528,7 +528,7 @@ typedef struct TAX25Port_t
 	word n1;
 	word n2;
 	word IPOLL_cnt;
-	TStringList frame_buf; //пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+	TStringList frame_buf; //буфер кадров на передачу
 	TStringList I_frame_buf;
 	Byte status;
 	word clk_frack;
@@ -574,7 +574,7 @@ typedef struct TAX25Port_t
 #define STAT_TRY_UNLINK 5
 
 
-	// пїЅmd,Resp,Poll,Final,Digipeater flags
+	// Сmd,Resp,Poll,Final,Digipeater flags
 #define 	SET_P 1
 #define 	SET_F 0
 #define 	SET_C 1

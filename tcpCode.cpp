@@ -1316,7 +1316,7 @@ uint16_t htons(uint16_t hostshort);
 uint32_t ntohl(uint32_t netlong);
 uint16_t ntohs(uint16_t netshort);
 
-#endif
+#endif 
 
 
 extern "C" void * zalloc(int len)

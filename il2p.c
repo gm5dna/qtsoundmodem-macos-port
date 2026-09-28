@@ -4616,7 +4616,7 @@ void il2p_get_new_frame(int snd_ch, TStringList * frame_stream)
 		}
 		else
 		{
-			// Just remove control
+			// Just remove control 
 
 			mydelete(myTemp, 0, 1);
 		}

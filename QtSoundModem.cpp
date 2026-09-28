@@ -183,7 +183,7 @@ bool inWaterfall = false;
 
 int MgmtPort = 0;
 int RHPPort = 9000;
-bool RHPServ = 0;
+bool RHPServ = 0; 
 
 int txAudioLevel = 100;
 int rxAudioLevel = 100;
@@ -703,7 +703,7 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 		trayIcon = new QSystemTrayIcon(QIcon(":/QtSoundModem/soundmodem.ico"), this);
 		trayIcon->setToolTip(popUp);
 		trayIcon->show();
-
+		
 		connect(trayIcon, SIGNAL(activated(QSystemTrayIcon::ActivationReason)), this, SLOT(TrayActivated(QSystemTrayIcon::ActivationReason)));
 	}
 #endif
@@ -3813,15 +3813,15 @@ QtSoundModem::~QtSoundModem()
 	Closing = TRUE;
 
 	closeTraceLog();
-
+		
 	QSettings mysettings("QtSoundModem.ini", QSettings::IniFormat);
 	mysettings.setValue("geometry", saveGeometry());
 	mysettings.setValue("windowState", saveState());
 
 	mysettings.setValue("Constellationgeometry", constellationDialog->saveGeometry());
 	constellationDialog->close();
-
-	saveSettings();
+	
+	saveSettings();	
 	qDebug() << "Closing";
 
 	QThread::msleep(100);
@@ -4403,7 +4403,7 @@ void QtSoundModem::StartWatchdog()
 	 switch (newState)
 	 {
 	 case QAudio::StoppedState:
-		 if (m_audioInput->error() != QAudio::NoError)
+		 if (m_audioInput->error() != QAudio::NoError) 
 		 {
 			 // Source errored out mid-Rx (USB unplug, CoreAudio
 			 // device-lost, rate change rejected, etc). Before this
@@ -4474,7 +4474,7 @@ void QtSoundModem::StartWatchdog()
 				 (int)m_audioOutput->error());
 			 SoundIsPlaying = 0;
 		 }
-		 else
+		 else 
 		 {
 			 // Finished recording
 		 }
@@ -5344,7 +5344,7 @@ void QtSoundModem::StartWatchdog()
 
 	 Debugprintf("ToSend %d Space %d Period Size %d chunks %d ", n * 4, space, size, chunks);
 
-	 // We are passed Stereo 16 bit samples. I think n is number of samples so send n x 4
+	 // We are passed Stereo 16 bit samples. I think n is number of samples so send n x 4 
 	 //
 	 // The busy-wait below previously had no error / state check and no
 	 // timeout: if QAudioSink entered StoppedState with a non-NoError
@@ -5739,7 +5739,7 @@ extern "C" void PollQSound()
 	// Process any captured samples
 	// Ideally call at least every 100 mS, more than 200 will loose data
 
-	// For level display we want a fairly rapid level average but only want to report
+	// For level display we want a fairly rapid level average but only want to report 
 	// to log every 10 secs or so
 
 	// Each output chunk = 512 stereo Int16 frames at 12 kHz =
