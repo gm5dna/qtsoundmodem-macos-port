@@ -277,7 +277,7 @@ string * AGW_G_Frame()
 	char portMsg[64];
 
 	string * Msg;
-
+	
 	for (int i = 0; i < 4; i++)
 	{
 		if (soundChannel[i])
@@ -513,7 +513,7 @@ int refreshModems = 0;
 
 /*
 
-+ 00 On air baud rate(0 = 1200 / 1 = 2400 / 2 = 4800 / 3 = 9600ï¿½)
++ 00 On air baud rate(0 = 1200 / 1 = 2400 / 2 = 4800 / 3 = 9600…)
 + 01 Traffic level(if 0xFF the port is not in autoupdate mode)
 + 02 TX Delay
 + 03 TX Tail

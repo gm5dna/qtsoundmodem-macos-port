@@ -2335,7 +2335,7 @@ void decode_stream_FSK(int last, int snd_ch, int rcvr_nr, int emph, float * src_
 		if (bit_buf[sample_cnt] != bit_buf[sample_cnt])
 			bit_buf[sample_cnt] = 0.0f;
 
-		// пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+		// Находим максимум в буфере синхронизации
 		// Find the maximum in the synchronization buffer
 
 		if (bit_buf[sample_cnt] > PkAmpMax)
@@ -2758,11 +2758,11 @@ void decode_stream_BPSK(int last, int snd_ch, int rcvr_nr, int emph, float * src
 		{
 			srcI[i] = srcI[i] / PSK_AGC;
 			srcQ[i] = srcQ[i] / PSK_AGC;
-			amp = amp / PSK_AGC; // пїЅпїЅпїЅпїЅпїЅпїЅ SQRT
+			amp = amp / PSK_AGC; // Вместо SQRT
 		}
 		//
 		bit_buf[sample_cnt] = 0.95*bit_buf[sample_cnt] + 0.05*amp;
-		// пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+		// Находим максимум в буфере синхронизации
 		if (bit_buf[sample_cnt] > PkAmpMax)
 		{
 			PkAmpI = srcI[i];
@@ -3050,7 +3050,7 @@ void decode_stream_QPSK(int last, int snd_ch, int rcvr_nr, int emph, float * src
 			srcI[i] = srcI[i] / PSK_AGC;
 			srcQ[i] = srcQ[i] / PSK_AGC;
 
-			amp = amp / PSK_AGC; // пїЅпїЅпїЅпїЅпїЅпїЅ SQRT
+			amp = amp / PSK_AGC; // Вместо SQRT
 		}
 
 		bit_buf[sample_cnt] = 0.95 *  bit_buf[sample_cnt] + 0.05 * amp;
@@ -3421,12 +3421,12 @@ void decode_stream_8PSK(int last, int snd_ch, int rcvr_nr, int emph, float * src
 		{
 			srcI[i] = srcI[i] / PSK_AGC;
 			srcQ[i] = srcQ[i] / PSK_AGC;
-			amp = amp / PSK_AGC; // пїЅпїЅпїЅпїЅпїЅпїЅ SQRT
+			amp = amp / PSK_AGC; // Вместо SQRT
 		}
 
 		bit_buf[sample_cnt] = 0.95*bit_buf[sample_cnt] + 0.05*amp;
 
-		// пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+		// Находим максимум в буфере синхронизации
 		if (bit_buf[sample_cnt] > PkAmpMax)
 		{
 			PkAmpI = srcI[i];

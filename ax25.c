@@ -49,7 +49,7 @@ uint16_t ntohs(uint16_t netshort);
 
 #define strtok_s strtok_r
 #include <stddef.h>
-#endif
+#endif 
 
 void set_DM(int snd_ch, Byte * path);
 void  rst_values(TAX25Port * AX25Sess);
@@ -128,7 +128,7 @@ const
   STAT_WAIT_ANS=3;
   STAT_TRY_LINK=4;
   STAT_TRY_UNLINK=5;
-  // пїЅmd,Resp,Poll,Final,Digipeater flags
+  // Сmd,Resp,Poll,Final,Digipeater flags
   SET_P=TRUE;
   SET_F=FALSE;
   SET_C=TRUE;
@@ -218,12 +218,12 @@ TStringList all_frame_buf[5];
 // AGW / KISS producers run on the Qt I/O thread; the modem worker is
 // on a separate worker thread. Both Add to and Delete from
 // all_frame_buf[*] (TStringList::Add reallocs Items; Delete shifts
-// pointers and decrements Count) вЂ” unsynchronised access lands real
+// pointers and decrements Count) -- unsynchronised access lands real
 // corruption when a 300-baud Tx holds the worker inside the dequeue
 // for seconds, widening the race window. One coarse mutex covers all
 // four channels; contention is negligible. pthread_mutex (not QMutex)
 // so the same primitive is usable from both C producers and C++
-// callers. Windows kept unchanged вЂ” the LOCK/UNLOCK_FRAME_BUF macros
+// callers. Windows kept unchanged -- the LOCK/UNLOCK_FRAME_BUF macros
 // are no-ops there (see UZ7HOStuff.h) so the race lives on there
 // until separately addressed with a CRITICAL_SECTION-based path.
 #ifndef _WIN32
@@ -848,9 +848,9 @@ begin
 	calls[i]:='';
 	ssids[i]:=0;
   end;
-  //пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+  //Разделяем позывные
   try explode(a_path,',',path,ADDR_MAX_LEN); except end;
-  //пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ ssid
+  //Разделяем позывные и ssid
   cnt:=0;
   repeat
 	a_call[0]:=''; a_call[1]:='';
@@ -863,21 +863,21 @@ begin
 	  inc(cnt);
 	end;
   until (a_call[0]='') or (cnt=ADDR_MAX_LEN);
-  //пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
+  //Формируем адресную строку
   addr:='';
   if cnt>1 then
   begin
 	for i:=0 to cnt-1 do
 	begin
-	  if (cr=SET_C) and (i=A_RX) then ssids[i]:=ssids[i]+C_BIT; //пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ C пїЅ CRRSSID1
-	  if (cr=SET_R) and (i=A_TX) then ssids[i]:=ssids[i]+C_BIT; //пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ C пїЅ CRRSSID1
+	  if (cr=SET_C) and (i=A_RX) then ssids[i]:=ssids[i]+C_BIT; //Добавляем C в CRRSSID1
+	  if (cr=SET_R) and (i=A_TX) then ssids[i]:=ssids[i]+C_BIT; //Добавляем C в CRRSSID1
 	  if rpt and (i>A_TX) then
-		if calls[i]=mydigi then ssids[i]:=ssids[i]+H_BIT; //пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ H пїЅ HRRSSID1
-	  ssids[i]:=ssids[i]+RR_BIT; //пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ RR пїЅ xRRSSID1
+		if calls[i]=mydigi then ssids[i]:=ssids[i]+H_BIT; //Добавляем H в HRRSSID1
+	  ssids[i]:=ssids[i]+RR_BIT; //Добавляем RR в xRRSSID1
 	  addr:=addr+calls[i]+chr(ssids[i]);
 	end;
-	for n:=1 to length(addr) do addr[n]:=chr(ord(addr[n]) shl 1); //пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ 1 пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
-	addr[length(addr)]:=chr(ord(addr[length(addr)]) xor 1); //пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
+	for n:=1 to length(addr) do addr[n]:=chr(ord(addr[n]) shl 1); //сдвигаем на 1 бит октеты
+	addr[length(addr)]:=chr(ord(addr[length(addr)]) xor 1); //устанавливаем конец адреса
   end;
   result:=addr;
 end;
@@ -2118,7 +2118,7 @@ begin
   if stat_log then
   begin
 	time_ses:=AX25Sess->info.stat_end_ses-AX25Sess->info.stat_begin_ses;
-	time_ses_sec:=time_ses*86400; //пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+	time_ses_sec:=time_ses*86400; //время сессии в секундах
 	if time_ses_sec<1 then exit;
 	mycall:=copy(AX25Sess->mycall+'         ',1,9);
 	call:=copy(AX25Sess->corrcall+'         ',1,9);

@@ -768,7 +768,7 @@ void on_RR(TAX25Port * AX25Sess, Byte * path, int  nr, int  pf, int cr)
 
 	if (cr == SET_R)
 	{
-		// Determine which frames could get into the userï¿½s frame buffer.
+		// Determine which frames could get into the user’s frame buffer.
 		i = AX25Sess->vs;
 
 		need_frame[index++] = i + '0';
@@ -911,7 +911,7 @@ void  on_I(void * socket, TAX25Port * AX25Sess, int PID, Byte * path, string * d
 			return;
 		}
 
-		// Determine which frames could get into the userï¿½s frame buffer.
+		// Determine which frames could get into the user’s frame buffer.
 
 		i = AX25Sess->vs;
 
