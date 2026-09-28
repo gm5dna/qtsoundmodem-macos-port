@@ -227,6 +227,9 @@ void ProcessKISSFrame(void * socket, UCHAR * Msg, int Len)
 
 		// if KISS Optimise see if frame is really needed
 
+		// KISS.buffer is drained by the modem worker (chk_dcd1) under
+		// all_frame_buf_mutex; this runs on the socket (GUI) thread.
+		LOCK_FRAME_BUF();
 		if (!KISS_opt[Chan])
 			Add(&KISS.buffer[Chan], TXMSG);
 		else
@@ -234,6 +237,7 @@ void ProcessKISSFrame(void * socket, UCHAR * Msg, int Len)
 			if (add_raw_frames(Chan, TXMSG, &KISS.buffer[Chan]))
 				Add(&KISS.buffer[Chan], TXMSG);
 		}
+		UNLOCK_FRAME_BUF();
 
 		return;
 
@@ -251,6 +255,9 @@ void ProcessKISSFrame(void * socket, UCHAR * Msg, int Len)
 
 		// if KISS Optimise see if frame is really needed
 
+		// KISS.buffer is drained by the modem worker (chk_dcd1) under
+		// all_frame_buf_mutex; this runs on the socket (GUI) thread.
+		LOCK_FRAME_BUF();
 		if (!KISS_opt[Chan])
 			Add(&KISS.buffer[Chan], TXMSG);
 		else
@@ -258,6 +265,7 @@ void ProcessKISSFrame(void * socket, UCHAR * Msg, int Len)
 			if (add_raw_frames(Chan, TXMSG, &KISS.buffer[Chan]))
 				Add(&KISS.buffer[Chan], TXMSG);
 		}
+		UNLOCK_FRAME_BUF();
 
 
 		return;
