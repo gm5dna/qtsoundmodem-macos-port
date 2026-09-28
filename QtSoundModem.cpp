@@ -1002,6 +1002,15 @@ QtSoundModem::QtSoundModem(QWidget *parent) : QMainWindow(parent)
 	ui.RXAudioLabel->setText(valChar);
 	ui.RXAudio->setValue(rxAudioLevel);
 
+	// The handler applies the level and rewrites the whole INI, so only
+	// fire it when a drag ends (or on a key/wheel step), not on every
+	// intermediate value; the label still tracks the drag.
+	ui.TXAudio->setTracking(false);
+	ui.RXAudio->setTracking(false);
+	connect(ui.TXAudio, &QSlider::sliderMoved, this, [this](int v)
+		{ ui.TXAudioLabel->setText(QString("TX Audio %1%").arg(v)); });
+	connect(ui.RXAudio, &QSlider::sliderMoved, this, [this](int v)
+		{ ui.RXAudioLabel->setText(QString("RX Audio %1%").arg(v)); });
 	connect(ui.TXAudio, SIGNAL(valueChanged(int)), this, SLOT(clickedSlotI(int)));
 	connect(ui.RXAudio, SIGNAL(valueChanged(int)), this, SLOT(clickedSlotI(int)));
 
