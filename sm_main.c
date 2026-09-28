@@ -1176,7 +1176,7 @@ void BufferFull(short * Samples, int nSamples)			// These are Stereo Samples
 	}
 
 
-	if (TimerEvent == TIMER_EVENT_ON)
+	if (__atomic_load_n(&TimerEvent, __ATOMIC_ACQUIRE) == TIMER_EVENT_ON)	// set by the GUI timer
 	{
 		timer_event();
 //		timer_event2();
