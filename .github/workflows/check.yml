@@ -1,0 +1,87 @@
+name: Check
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: macos-14
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          brew update
+          brew install qt@6 fftw hidapi ffmpeg
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix qt@6)"
+
+      - name: Build
+        shell: bash
+        run: cmake --build build --parallel 2>&1 | tee build.log
+
+      - name: Verify bundle
+        run: |
+          codesign --verify --deep --strict --verbose=2 build/QtSoundModem.app
+          test -d build/QtSoundModem.app/Contents/Frameworks/QtCore.framework
+
+      - name: Script tests
+        run: bash scripts/extract-release-notes.test.sh
+
+      # The decode corpus (~280 MB) lives on the corpus-v1 release, not
+      # in git. Cached so most runs never download it.
+      - name: Restore corpus
+        id: corpus
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/corpus
+          key: corpus-v1
+
+      - name: Download corpus
+        if: steps.corpus.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/corpus"
+          gh release download corpus-v1 -R "$GITHUB_REPOSITORY" -p 'corpus-v1.tar.gz' -O - \
+            | tar -xz -C "$RUNNER_TEMP/corpus"
+
+      - name: Decode regression
+        run: |
+          BIN="$PWD/build/QtSoundModem.app/Contents/MacOS/QtSoundModem" \
+          CORPUS_DIR="$RUNNER_TEMP/corpus" \
+            test-files/run-regression.sh
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: build-log
+          path: build.log
+          retention-days: 7
+
+  # Sizes the warning debt; never fails the run.
+  warnings:
+    runs-on: macos-14
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - run: |
+          brew update
+          brew install qt@6 fftw hidapi
+      - shell: bash
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DQSM_WARNINGS=ON \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix qt@6)"
+          cmake --build build --parallel 2>&1 | tee build.log
+          n=$(grep -c 'warning:' build.log || true)
+          echo "Compiler warnings with -Wall -Wextra: $n" >> "$GITHUB_STEP_SUMMARY"

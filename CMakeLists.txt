@@ -298,3 +298,15 @@ if(APPLE)
         "${COREAUDIO_FRAMEWORK}"
         "${FOUNDATION_FRAMEWORK}")
 endif()
+
+# Diagnostics. Off by default; CI turns QSM_WARNINGS on in a non-fatal
+# job. The upstream C is noisy at -Wall, so never add -Werror here.
+option(QSM_WARNINGS "Build with -Wall -Wextra" OFF)
+option(QSM_TSAN "Build with ThreadSanitizer" OFF)
+if(QSM_WARNINGS)
+    target_compile_options(QtSoundModem PRIVATE -Wall -Wextra)
+endif()
+if(QSM_TSAN)
+    target_compile_options(QtSoundModem PRIVATE -fsanitize=thread -g)
+    target_link_options(QtSoundModem PRIVATE -fsanitize=thread)
+endif()
