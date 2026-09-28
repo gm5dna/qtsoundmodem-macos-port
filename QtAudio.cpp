@@ -366,9 +366,14 @@ static bool s_devChangeDeferred = false;
  {
 	 if (!s_modemReqPending.load())
 		 return;
+	 // Not while anything is being sent: tx_status alone misses an RSID
+	 // burst and the first ARDOP/RUH block, so also check PTT state
+	 // (snd_status, set by RadioPTT before any sample) and SoundIsPlaying.
+	 if (SoundIsPlaying)
+		 return;			// retry on a later poll
 	 for (int i = 0; i < 4; i++)
-		 if (tx_status[i] != TX_SILENCE)
-			 return;		// retry on a later poll
+		 if (tx_status[i] != TX_SILENCE || snd_status[i] != SND_IDLE)
+			 return;
 
 	 int req[4];
 	 {
@@ -1399,6 +1404,9 @@ static std::atomic<bool> s_txAborted{false};
 extern "C" void qtAudioTxStart()
 {
 	s_txAborted = false;
+	// Only an IdleState from this transmission may end it: drop one left
+	// over from the previous frame or from the sink opening.
+	s_sinkIdle.store(0);
 }
 
  extern "C" unsigned short * sendSamplestoQSound(unsigned short * buf, int n)
@@ -1812,6 +1820,9 @@ extern "C" void PollQSound()
 	// For level display we want a fairly rapid level average but only want to report 
 	// to log every 10 secs or so
 
+	qtAudioConsumeSinkIdle();
+	applyModemRequests();
+
 	// Each output chunk = 512 stereo Int16 frames at 12 kHz =
 	// 2048 bytes. Input chunk scales by decimation:
 	//   decim=1 (12 kHz):  2048 bytes
@@ -1827,9 +1838,6 @@ extern "C" void PollQSound()
 	// and prepend it to the next read so the device stream stays
 	// byte-contiguous. (Codex second-reviewer catch on
 	// BUG-rx-audit item 6.)
-	qtAudioConsumeSinkIdle();
-	applyModemRequests();
-
 	static char s_partialTail[4];   // frameBytes is at most 4
 	static int  s_partialTailLen = 0;
 
@@ -2088,13 +2096,6 @@ extern "C" void PollQSound()
 		}
 #endif
 
-		// Note: BufferFull reads the global `using48000` directly while
-		// `nativeRUHPath` is captured once per PollQSound call. If the
-		// user reconfigures a modem into/out of RUH mode mid-call, the
-		// routing here and BufferFull's interpretation could disagree
-		// for one chunk. Accepted as a known minor inconsistency —
-		// modem reconfiguration restarts audio anyway, so the window
-		// is small.
 		ProcessNewSamples(processed, processedFrames);
 
 		BufferLen -= inChunkBytes;
