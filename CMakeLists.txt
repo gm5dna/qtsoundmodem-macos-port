@@ -108,6 +108,7 @@ endif()
 set(QSM_COMMON_SOURCES
     main.cpp
     QtSoundModem.cpp
+    QtAudio.cpp
     Config.cpp
     ShowFilter.cpp
     tcpCode.cpp
