@@ -77,7 +77,7 @@ jobs:
       - run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends cmake g++ \
-            qt6-base-dev qt6-multimedia-dev libqt6serialport6-dev \
+            qt6-base-dev qt6-multimedia-dev qt6-serialport-dev \
             libfftw3-dev libasound2-dev libpulse-dev
       - run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
