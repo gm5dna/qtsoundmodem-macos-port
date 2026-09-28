@@ -43,10 +43,11 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 //                - POSIX termios serial port + TIOCM line-state ioctls.
 //                  Used by SMMain.c's PTT path for Signalink-style
 //                  RTS/DTR keying. macOS supports the same termios +
-//                  TIOCMGET/TIOCMSET interface as Linux, so these are
-//                  near-verbatim copies of Linux.c's implementations
-//                  with EAGAIN/EWOULDBLOCK substituted for the magic
-//                  errno values 11/35.
+//                  TIOCMGET/TIOCMSET interface as Linux. Derived from
+//                  Linux.c's versions but hardened (fd closed on error
+//                  paths, TIOCMGET result checked, snprintf, EAGAIN/
+//                  EWOULDBLOCK instead of magic errnos), so deliberately
+//                  not shared with Linux.c.
 //   CaptureDevice, PlaybackDevice, CaptureNames, PlaybackNames,
 //   CaptureCount, PlaybackCount
 //                - Audio device-name storage. ALSASound.c / Waveout.c
