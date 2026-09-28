@@ -894,6 +894,12 @@ void BufferFull(short * Samples, int nSamples)			// These are Stereo Samples
 	// off the true incoming chunk size. See BUG-rx-audit item 5.
 	const int entryNSamples = nSamples;
 
+	// using48000 only says a RUH modem is enabled. Whether this chunk
+	// really is 48 kHz depends on the device: PollQSound hands over
+	// 4*rx_bufsize native frames only when the device runs at 48 kHz,
+	// otherwise it has already FIR-decimated to 12 kHz.
+	const int native48 = using48000 && entryNSamples == 4 * rx_bufsize;
+
 	// if UDP server active send as UDP Datagram
 
 	if (UDPServ)	// Extract just left
@@ -913,7 +919,10 @@ void BufferFull(short * Samples, int nSamples)			// These are Stereo Samples
 
 	// Do RSID processing (can we also use this for waterfall??
 
-	RSIDProcessSamples(Samples, nSamples);
+	// RSID is a 12 kHz detector; a native 48 kHz chunk is fed to it
+	// after the 48->12 kHz reduction below instead.
+	if (!native48)
+		RSIDProcessSamples(Samples, nSamples);
 
 	// Do FFT on every 4th buffer (2048 samples)
 
@@ -953,7 +962,7 @@ void BufferFull(short * Samples, int nSamples)			// These are Stereo Samples
 				int n = nSamples;		// local: don't quarter nSamples for later channels
 				i1 = 0;
 
-				if (using48000)
+				if (native48)
 				{
 					i1 = 0;
 					j = 0;
@@ -1001,7 +1010,7 @@ void BufferFull(short * Samples, int nSamples)			// These are Stereo Samples
 
 		data1 = Samples;
 
-		if (using48000)
+		if (native48)
 		{
 			// 48 kHz -> 12 kHz for the FSK src_buf extraction below.
 			// The old code took every 4th stereo frame (i1 += 8) with
@@ -1016,42 +1025,26 @@ void BufferFull(short * Samples, int nSamples)			// These are Stereo Samples
 			// native-rate Samples in the snd_ch loop above
 			// (dw9600ProcessSample), so filtering here only affects
 			// the FSK extraction, not RUH. See BUG-rx-audit item 5.
-			if (entryNSamples == 4 * rx_bufsize)
+			// Genuine native 48 kHz chunk: PollQSound's
+			// nativeRUHPath always hands 4*rx_bufsize (2048)
+			// stereo frames, which decimateAudioToModem reduces
+			// to exactly rx_bufsize (512) stereo frames.
+			static short aaTmp[2 * 512];	// 512 stereo frames
+			decimateAudioToModem(Samples, 4, aaTmp);
+			memcpy(Samples, aaTmp, sizeof(aaTmp));
+			nSamples = rx_bufsize;
+			RSIDProcessSamples(Samples, nSamples);
+		}
+		else if (using48000)
+		{
+			// RUH enabled but the device is not at 48 kHz: this chunk is
+			// already 12 kHz, so FSK channels use it as is. RUH itself
+			// cannot work at this rate.
+			static int warned = 0;
+			if (!warned)
 			{
-				// Genuine native 48 kHz chunk: PollQSound's
-				// nativeRUHPath always hands 4*rx_bufsize (2048)
-				// stereo frames, which decimateAudioToModem reduces
-				// to exactly rx_bufsize (512) stereo frames.
-				// Guarded on entryNSamples (not nSamples) so a
-				// co-running ARDOP channel's in-place nSamples /= 4
-				// can't misroute this real native chunk.
-				static short aaTmp[2 * 512];	// 512 stereo frames
-				decimateAudioToModem(Samples, 4, aaTmp);
-				memcpy(Samples, aaTmp, sizeof(aaTmp));
-				nSamples = rx_bufsize;
-			}
-			else
-			{
-				// Misconfigured: a RUH modem is selected but the
-				// device is not at 48 kHz, so PollQSound already
-				// FIR-decimated to 12 kHz and this buffer is only
-				// rx_bufsize frames. decimateAudioToModem assumes a
-				// 4*rx_bufsize input, so calling it here would read
-				// past the buffer. Decimating 12 kHz again is wrong
-				// either way (RUH at non-48 kHz never worked — out of
-				// scope); keep the legacy crude every-4th purely so
-				// this path can't over-read.
-				i1 = 0;
-				j = 0;
-
-				nSamples /= 4;
-
-				for (i = 0; i < nSamples; i++)
-				{
-					Samples[j++] = Samples[i1];
-					Samples[j++] = Samples[i1 + 1];
-					i1 += 8;
-				}
+				warned = 1;
+				Debugprintf("RUH modem needs a 48 kHz input device; this one is not, so RUH will not decode");
 			}
 		}
 
