@@ -2081,8 +2081,8 @@ void QtSoundModem::modemSave()
 	recovery[3] = Dlg->recoverBitD->currentIndex();
 
 
-	strcpy(CWIDCall, Dlg->CWIDCall->text().toUtf8().toUpper());
-	strcpy(CWIDMark, Dlg->CWIDMark->text().toUtf8().toUpper());
+	qstrncpy(CWIDCall, Dlg->CWIDCall->text().toUtf8().toUpper(), sizeof(CWIDCall));
+	qstrncpy(CWIDMark, Dlg->CWIDMark->text().toUtf8().toUpper(), sizeof(CWIDMark));
 	CWIDInterval = Dlg->CWIDInterval->text().toInt();
 	CWIDType = Dlg->radioButton_2->isChecked();
 
@@ -2110,16 +2110,16 @@ void QtSoundModem::modemSave()
 	RSID_SetModem[3] = Dlg->RSID_4_SETMODEM->isChecked();
 
 	Q = Dlg->DigiCallsA->text();
-	strcpy(MyDigiCall[0], Q.toString().toUtf8().toUpper());
+	qstrncpy(MyDigiCall[0], Q.toString().toUtf8().toUpper(), sizeof(MyDigiCall[0]));
 
 	Q = Dlg->DigiCallsB->text();
-	strcpy(MyDigiCall[1], Q.toString().toUtf8().toUpper());
+	qstrncpy(MyDigiCall[1], Q.toString().toUtf8().toUpper(), sizeof(MyDigiCall[1]));
 
 	Q = Dlg->DigiCallsC->text();
-	strcpy(MyDigiCall[2], Q.toString().toUtf8().toUpper());
+	qstrncpy(MyDigiCall[2], Q.toString().toUtf8().toUpper(), sizeof(MyDigiCall[2]));
 
 	Q = Dlg->DigiCallsD->text();
-	strcpy(MyDigiCall[3], Q.toString().toUtf8().toUpper());
+	qstrncpy(MyDigiCall[3], Q.toString().toUtf8().toUpper(), sizeof(MyDigiCall[3]));
 
 	int i;
 
@@ -2253,7 +2253,7 @@ void QtSoundModem::PTTPortChanged(int Selected)
 	UNUSED(Selected);
 
 	QVariant Q = Dev->PTTPort->currentText();
-	strcpy(NewPTTPort, Q.toString().toUtf8());
+	qstrncpy(NewPTTPort, Q.toString().toUtf8(), sizeof(NewPTTPort));
 
 	Dev->RTSDTR->setVisible(false);
 	Dev->CAT->setVisible(false);
@@ -2875,10 +2875,10 @@ void QtSoundModem::deviceaccept()
 
 	char temp[256];
 
-	strcpy(temp, Q.toString().toUtf8());
+	qstrncpy(temp, Q.toString().toUtf8(), sizeof(temp));
 
 	if (strlen(temp))
-		strcpy(SixPackDevice, temp);
+		qstrncpy(SixPackDevice, temp, sizeof(SixPackDevice));
 
 	Q = Dev->SixPackTCP->text();
 	SixPackPort = Q.toInt();
@@ -2889,10 +2889,10 @@ void QtSoundModem::deviceaccept()
 	Q = Dev->PTTPort->currentText();
 	
 
-	strcpy(temp, Q.toString().toUtf8());
+	qstrncpy(temp, Q.toString().toUtf8(), sizeof(temp));
 
 	if (strlen(temp))
-		strcpy(PTTPort, temp);
+		qstrncpy(PTTPort, temp, sizeof(PTTPort));
 
 	DualPTT = Dev->DualPTT->isChecked();
 	TX_rotate = Dev->txRotation->isChecked();
@@ -2908,9 +2908,9 @@ void QtSoundModem::deviceaccept()
 		PTTMode = PTTRTSDTR;
 
 	Q = Dev->PTTOn->text();
-	strcpy(PTTOnString, Q.toString().toUtf8());
+	qstrncpy(PTTOnString, Q.toString().toUtf8(), sizeof(PTTOnString));
 	Q = Dev->PTTOff->text();
-	strcpy(PTTOffString, Q.toString().toUtf8());
+	qstrncpy(PTTOffString, Q.toString().toUtf8(), sizeof(PTTOffString));
 
 	Q = Dev->CATSpeed->text();
 	PTTBAUD = Q.toInt();
@@ -2920,7 +2920,7 @@ void QtSoundModem::deviceaccept()
 
 
 	Q = Dev->UDPTXPort->text();
-	strcpy(portString, Q.toString().toUtf8());
+	qstrncpy(portString, Q.toString().toUtf8(), sizeof(portString));
 	UDPServerPort = atoi(portString);
 
 	if (strchr(portString, '/'))
@@ -2932,7 +2932,7 @@ void QtSoundModem::deviceaccept()
 		TXPort = UDPServerPort;
 
 	Q = Dev->UDPTXHost->text();
-	strcpy(UDPHost, Q.toString().toUtf8());
+	qstrncpy(UDPHost, Q.toString().toUtf8(), sizeof(UDPHost));
 
 	UDPServ = Dev->UDPEnabled->isChecked();
 
@@ -2945,18 +2945,18 @@ void QtSoundModem::deviceaccept()
 	Q = Dev->VIDPID->text();
 
 	if (strcmp(PTTPort, "CM108") == 0)
-		strcpy(CM108Addr, Q.toString().toUtf8());
+		qstrncpy(CM108Addr, Q.toString().toUtf8(), sizeof(CM108Addr));
 	else if (strcmp(PTTPort, "HAMLIB") == 0)
 	{
 		HamLibPort = Q.toInt();
 		Q = Dev->PTTOn->text();
-		strcpy(HamLibHost, Q.toString().toUtf8());
+		qstrncpy(HamLibHost, Q.toString().toUtf8(), sizeof(HamLibHost));
 	}
 	else if (strcmp(PTTPort, "FLRIG") == 0)
 	{
 		FLRigPort = Q.toInt();
 		Q = Dev->PTTOn->text();
-		strcpy(FLRigHost, Q.toString().toUtf8());
+		qstrncpy(FLRigHost, Q.toString().toUtf8(), sizeof(FLRigHost));
 	}
 
 	Q = Dev->WaterfallMax->currentText();

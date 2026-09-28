@@ -142,8 +142,8 @@ void GetPortSettings(int Chan)
 	MEMRecovery[Chan]= getAX25Param("MEMRecovery", 200).toInt();
 	IPOLL[Chan] = getAX25Param("IPOLL", 80).toInt();
 
-	strcpy(MyDigiCall[Chan], getAX25Param("MyDigiCall", "").toString().toUtf8());
-	strcpy(exclude_callsigns[Chan], getAX25Param("ExcludeCallsigns", "").toString().toUtf8());
+	qstrncpy(MyDigiCall[Chan], getAX25Param("MyDigiCall", "").toString().toUtf8(), sizeof(MyDigiCall[Chan]));
+	qstrncpy(exclude_callsigns[Chan], getAX25Param("ExcludeCallsigns", "").toString().toUtf8(), sizeof(exclude_callsigns[Chan]));
 
 	fx25_mode[Chan] = getAX25Param("FX25", FX25_MODE_RX).toInt();
 	il2p_mode[Chan] = getAX25Param("IL2P", IL2P_MODE_NONE).toInt();
@@ -192,7 +192,7 @@ void getSettings()
 	UDPServerPort = settings->value("Init/UDPServerPort", 8884).toInt();
 	TXPort = settings->value("Init/TXPort", UDPServerPort).toInt();
 
-	strcpy(UDPHost, settings->value("Init/UDPHost", "192.168.1.255").toString().toUtf8());
+	qstrncpy(UDPHost, settings->value("Init/UDPHost", "192.168.1.255").toString().toUtf8(), sizeof(UDPHost));
 	UDPServ = settings->value("Init/UDPServer", FALSE).toBool();
 
 //	RX_SR = settings->value("Init/RXSampleRate", 12000).toInt();
@@ -251,12 +251,12 @@ void getSettings()
 
 	raduga = settings->value("Init/DispMode", DISP_RGB).toInt();
 
-	strcpy(PTTPort, settings->value("Init/PTT", "").toString().toUtf8());
+	qstrncpy(PTTPort, settings->value("Init/PTT", "").toString().toUtf8(), sizeof(PTTPort));
 	PTTMode = settings->value("Init/PTTMode", 19200).toInt();
 	PTTBAUD = settings->value("Init/PTTBAUD", 19200).toInt();
 
-	strcpy(PTTOnString, settings->value("Init/PTTOnString", "").toString().toUtf8());
-	strcpy(PTTOffString, settings->value("Init/PTTOffString", "").toString().toUtf8());
+	qstrncpy(PTTOnString, settings->value("Init/PTTOnString", "").toString().toUtf8(), sizeof(PTTOnString));
+	qstrncpy(PTTOffString, settings->value("Init/PTTOffString", "").toString().toUtf8(), sizeof(PTTOffString));
 
 	pttGPIOPin = settings->value("Init/pttGPIOPin", 17).toInt();
 	pttGPIOPinR = settings->value("Init/pttGPIOPinR", 17).toInt();
@@ -266,16 +266,16 @@ void getSettings()
 	// SMMain.c::DecodeCM108 (same branch as Windows). The Linux
 	// /dev/hidraw0 default would be parsed by strtol() as VID=0/PID=0
 	// and silently fail to bind on first launch.
-	strcpy(CM108Addr, settings->value("Init/CM108Addr", "0xD8C:0x08").toString().toUtf8());
+	qstrncpy(CM108Addr, settings->value("Init/CM108Addr", "0xD8C:0x08").toString().toUtf8(), sizeof(CM108Addr));
 #else
-	strcpy(CM108Addr, settings->value("Init/CM108Addr", "/dev/hidraw0").toString().toUtf8());
+	qstrncpy(CM108Addr, settings->value("Init/CM108Addr", "/dev/hidraw0").toString().toUtf8(), sizeof(CM108Addr));
 #endif
 
 	HamLibPort = settings->value("Init/HamLibPort", 4532).toInt();
-	strcpy(HamLibHost, settings->value("Init/HamLibHost", "127.0.0.1").toString().toUtf8());
+	qstrncpy(HamLibHost, settings->value("Init/HamLibHost", "127.0.0.1").toString().toUtf8(), sizeof(HamLibHost));
 
 	FLRigPort = settings->value("Init/FLRigPort", 12345).toInt();
-	strcpy(FLRigHost, settings->value("Init/FLRigHost", "127.0.0.1").toString().toUtf8());
+	qstrncpy(FLRigHost, settings->value("Init/FLRigHost", "127.0.0.1").toString().toUtf8(), sizeof(FLRigHost));
 
 
 	DualPTT = settings->value("Init/DualPTT", 1).toInt();
@@ -334,7 +334,7 @@ void getSettings()
 
 	SixPackEnable = settings->value("SixPack/Enable", FALSE).toBool();
 	SixPackPort = settings->value("SixPack/Port", 0).toInt();
-	strcpy(SixPackDevice, settings->value("SixPack/Device", "").toString().toUtf8());
+	qstrncpy(SixPackDevice, settings->value("SixPack/Device", "").toString().toUtf8(), sizeof(SixPackDevice));
 
 //	RX_Samplerate = RX_SR + RX_SR * 0.000001*RX_PPM;
 //	TX_Samplerate = TX_SR + TX_SR * 0.000001*TX_PPM;
@@ -363,8 +363,8 @@ void getSettings()
 	txtail[2] = settings->value("Modem/TxTail3", 50).toInt();
 	txtail[3] = settings->value("Modem/TxTail4", 50).toInt();
 
-	strcpy(CWIDCall, settings->value("Modem/CWIDCall", "").toString().toUtf8().toUpper());
-	strcpy(CWIDMark, settings->value("Modem/CWIDMark", "").toString().toUtf8().toUpper());
+	qstrncpy(CWIDCall, settings->value("Modem/CWIDCall", "").toString().toUtf8().toUpper(), sizeof(CWIDCall));
+	qstrncpy(CWIDMark, settings->value("Modem/CWIDMark", "").toString().toUtf8().toUpper(), sizeof(CWIDMark));
 	CWIDInterval = settings->value("Modem/CWIDInterval", 0).toInt();
 	CWIDLeft = settings->value("Modem/CWIDLeft", 0).toInt();
 	CWIDRight = settings->value("Modem/CWIDRight", 0).toInt();

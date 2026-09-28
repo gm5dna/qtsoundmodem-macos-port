@@ -1015,9 +1015,9 @@ extern int VID;
 extern int PID;
 extern char CM108Addr[256];
 extern int HamLibPort;
-extern char HamLibHost[];
+extern char HamLibHost[32];
 extern int FLRigPort;
-extern char FLRigHost[];
+extern char FLRigHost[32];
 
 extern int SCO;
 extern int DualPTT;
