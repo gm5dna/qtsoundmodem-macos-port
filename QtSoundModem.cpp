@@ -5595,8 +5595,6 @@ extern int g_audioInputDecim;
 extern "C" char * g_dumpInputPath;
 static FILE * s_dumpFile = nullptr;
 static long s_dumpDataBytes = 0;
-static int s_dumpRate = 0;
-extern "C" void dumpInputClose();
 
 static void dumpInputOpen(int sampleRate)
 {
@@ -5607,7 +5605,7 @@ static void dumpInputOpen(int sampleRate)
 		return;
 	}
 	const unsigned int byteRate = (unsigned int)sampleRate * 4;  // 2ch * 2byte
-	// Canonical 44-byte WAV header. Chunk sizes patched at close.
+	// Canonical 44-byte WAV header. Sizes patched by dumpInputWrite.
 	unsigned char hdr[44] = {
 		'R','I','F','F', 0,0,0,0,
 		'W','A','V','E', 'f','m','t',' ',
@@ -5624,43 +5622,30 @@ static void dumpInputOpen(int sampleRate)
 	};
 	fwrite(hdr, 1, 44, s_dumpFile);
 	s_dumpDataBytes = 0;
-	s_dumpRate = sampleRate;
-	// Nothing else closes the dump; patch the header sizes at exit.
-	atexit(dumpInputClose);
 	Debugprintf("dump-input: writing to %s @ %d Hz", g_dumpInputPath, sampleRate);
 }
 
+static void put32(FILE * f, long pos, long v)
+{
+	const unsigned char b[4] = {
+		(unsigned char)(v & 0xFF), (unsigned char)((v >> 8) & 0xFF),
+		(unsigned char)((v >> 16) & 0xFF), (unsigned char)((v >> 24) & 0xFF) };
+	fseek(f, pos, SEEK_SET);
+	fwrite(b, 1, 4, f);
+}
+
+// Worker thread only. The RIFF/data sizes are patched after every chunk
+// and the file flushed, so the WAV is valid whenever the app exits;
+// there is no close path to race the worker at shutdown.
 static void dumpInputWrite(const void * data, size_t bytes)
 {
 	if (!s_dumpFile) return;
 	fwrite(data, 1, bytes, s_dumpFile);
 	s_dumpDataBytes += bytes;
-}
-
-extern "C" void dumpInputClose()
-{
-	if (!s_dumpFile) return;
-	// Detach first so a still-running worker's dumpInputWrite stops.
-	FILE * f = s_dumpFile;
-	s_dumpFile = nullptr;
-	long fileSize = 36 + s_dumpDataBytes;
-	fseek(f, 4, SEEK_SET);
-	unsigned char b[4] = {
-		(unsigned char)(fileSize & 0xFF),
-		(unsigned char)((fileSize >> 8) & 0xFF),
-		(unsigned char)((fileSize >> 16) & 0xFF),
-		(unsigned char)((fileSize >> 24) & 0xFF)
-	};
-	fwrite(b, 1, 4, f);
-	fseek(f, 40, SEEK_SET);
-	b[0] = (unsigned char)(s_dumpDataBytes & 0xFF);
-	b[1] = (unsigned char)((s_dumpDataBytes >> 8) & 0xFF);
-	b[2] = (unsigned char)((s_dumpDataBytes >> 16) & 0xFF);
-	b[3] = (unsigned char)((s_dumpDataBytes >> 24) & 0xFF);
-	fwrite(b, 1, 4, f);
-	fclose(f);
-	Debugprintf("dump-input: closed, %ld bytes data (%.2f s)",
-		s_dumpDataBytes, (double)s_dumpDataBytes / (s_dumpRate * 4.0));
+	put32(s_dumpFile, 4, 36 + s_dumpDataBytes);
+	put32(s_dumpFile, 40, s_dumpDataBytes);
+	fseek(s_dumpFile, 0, SEEK_END);
+	fflush(s_dumpFile);
 }
 #endif
 
@@ -5901,8 +5886,9 @@ extern "C" void PollQSound()
 		if (m_audioInput && in)
 		{
 			static char scratch[16384];
+			const qint64 frame = (g_audioInputChannelCount == 1) ? 2 : 4;
 			qint64 n = in->bytesAvailable();
-			n -= n % 4;		// whole frames, mono (2) or stereo (4)
+			n -= n % frame;		// whole frames only
 			while (n > 0)
 			{
 				const qint64 r = in->read(scratch, qMin(n, (qint64)sizeof(scratch)));
