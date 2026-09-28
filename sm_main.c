@@ -890,14 +890,8 @@ void BufferFull(short * Samples, int nSamples)			// These are Stereo Samples
 	short * data2 = 0;
 
 	// Entry frame count, captured before anything can mutate the
-	// nSamples parameter. The MODE_ARDOP branch below does an
-	// in-place nSamples /= 4 inside the per-channel loop, so by the
-	// time the using48000 48->12 kHz reduction runs nSamples may
-	// already be quartered. The FIR-decimation guard there must key
-	// off the true incoming chunk size, not the possibly-mangled
-	// nSamples, or an ARDOP-plus-RUH session would misroute a real
-	// native 48 kHz chunk into the crude fallback. See BUG-rx-audit
-	// item 5.
+	// nSamples parameter; the using48000 48->12 kHz guard below keys
+	// off the true incoming chunk size. See BUG-rx-audit item 5.
 	const int entryNSamples = nSamples;
 
 	// if UDP server active send as UDP Datagram
@@ -956,6 +950,7 @@ void BufferFull(short * Samples, int nSamples)			// These are Stereo Samples
 			if (modem_mode[snd_ch] == MODE_ARDOP)
 			{
 				short ardopbuff[1200];
+				int n = nSamples;		// local: don't quarter nSamples for later channels
 				i1 = 0;
 
 				if (using48000)
@@ -966,9 +961,9 @@ void BufferFull(short * Samples, int nSamples)			// These are Stereo Samples
 					//	Need to downsample 48K to 12K
 					//	Try just skipping 3 samples	
 
-					nSamples /= 4;
+					n = nSamples / 4;
 
-					for (i = 0; i < nSamples; i++)
+					for (i = 0; i < n; i++)
 					{
 						ardopbuff[i] = Samples[i1];		
 						i1 += 8;
@@ -976,14 +971,14 @@ void BufferFull(short * Samples, int nSamples)			// These are Stereo Samples
 				}
 				else
 				{
-					for (i = 0; i < nSamples; i++)
+					for (i = 0; i < n; i++)
 					{
 						ardopbuff[i] = Samples[i1];
 						i1++;
 						i1++;
 					}
 				}
-				ARDOPProcessNewSamples(snd_ch, ardopbuff, nSamples);
+				ARDOPProcessNewSamples(snd_ch, ardopbuff, n);
 			}
 
 			else if (modem_mode[snd_ch] == MODE_RUH)
