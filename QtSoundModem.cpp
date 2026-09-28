@@ -2452,9 +2452,21 @@ void QtSoundModem::doDevices()
 	connect(Dev->UDP, SIGNAL(toggled(bool)), this, SLOT(SoundModeChanged(bool)));
 	connect(Dev->onlyMixSnoop, SIGNAL(toggled(bool)), this, SLOT(SoundModeChanged(bool)));
 
+	// Item data carries the QAudioDevice id (PlaybackNames and
+	// outputDevicesFiltered are built in step), so selection and
+	// deviceaccept never depend on names or list positions: two
+	// same-named codecs, or a hot-plug while the dialog is open, can't
+	// select or save the wrong device.
 	for (i = 0; i < PlaybackCount; i++)
-		Dev->outputDevice->addItem(&PlaybackNames[i][0]);
+		Dev->outputDevice->addItem(&PlaybackNames[i][0],
+			i < outputDevicesFiltered.size() ? outputDevicesFiltered[i].id() : QByteArray());
 
+#if defined(Q_OS_MACOS)
+	i = PlaybackDeviceId[0] ? Dev->outputDevice->findData(QByteArray::fromBase64(PlaybackDeviceId)) : -1;
+	if (i == -1)
+		i = Dev->outputDevice->findText(PlaybackDevice, Qt::MatchFixedString);
+	if (i == -1)
+#endif
 	i = Dev->outputDevice->findText(PlaybackDevice, Qt::MatchContains);
 
 
@@ -2469,8 +2481,15 @@ void QtSoundModem::doDevices()
 	Dev->outputDevice->setCurrentIndex(i);
 
 	for (i = 0; i < CaptureCount; i++)
-		Dev->inputDevice->addItem(&CaptureNames[i][0]);
+		Dev->inputDevice->addItem(&CaptureNames[i][0],
+			i < inputDevicesFiltered.size() ? inputDevicesFiltered[i].id() : QByteArray());
 
+#if defined(Q_OS_MACOS)
+	i = CaptureDeviceId[0] ? Dev->inputDevice->findData(QByteArray::fromBase64(CaptureDeviceId)) : -1;
+	if (i == -1)
+		i = Dev->inputDevice->findText(CaptureDevice, Qt::MatchFixedString);
+	if (i == -1)
+#endif
 	i = Dev->inputDevice->findText(CaptureDevice, Qt::MatchContains);
 
 	if (i == -1)
@@ -2755,6 +2774,8 @@ void QtSoundModem::deviceaccept()
 	}
 
 	CaptureIndex = Dev->inputDevice->currentIndex();
+	// Empty for an appended "saved but not present" entry.
+	const QByteArray selInId = Dev->inputDevice->currentData().toByteArray();
 
 #if defined(Q_OS_MACOS)
 	// Capture the stable id alongside the description. Picking a
@@ -2768,9 +2789,9 @@ void QtSoundModem::deviceaccept()
 	// unfiltered list here would silently shift selections by the count
 	// of surround entries before this device, so the saved id is for
 	// the wrong device.
-	if (CaptureIndex >= 0 && CaptureIndex < inputDevicesFiltered.size())
+	if (!selInId.isEmpty())
 	{
-		QByteArray idB64 = inputDevicesFiltered[CaptureIndex].id().toBase64();
+		QByteArray idB64 = selInId.toBase64();
 		if (idB64.size() >= (qsizetype)sizeof(CaptureDeviceId))
 		{
 			Debugprintf("WARNING: capture device id (%lld bytes) exceeds "
@@ -2798,15 +2819,16 @@ void QtSoundModem::deviceaccept()
 	}
 
 	PlayBackIndex = Dev->outputDevice->currentIndex();
+	const QByteArray selOutId = Dev->outputDevice->currentData().toByteArray();
 
 #if defined(Q_OS_MACOS)
 	// See CaptureDeviceId comment above for the cardChanged rationale.
 	// Index against the filtered list (combo is populated from
 	// PlaybackNames, which skips surround entries); see CaptureIndex
 	// site above for the rationale.
-	if (PlayBackIndex >= 0 && PlayBackIndex < outputDevicesFiltered.size())
+	if (!selOutId.isEmpty())
 	{
-		QByteArray idB64 = outputDevicesFiltered[PlayBackIndex].id().toBase64();
+		QByteArray idB64 = selOutId.toBase64();
 		if (idB64.size() >= (qsizetype)sizeof(PlaybackDeviceId))
 		{
 			Debugprintf("WARNING: playback device id (%lld bytes) exceeds "
@@ -3002,36 +3024,37 @@ void QtSoundModem::deviceaccept()
 	{
 		if (SoundMode == 5)
 		{
-			// A hot-unplug delivered while the Devices dialog was open
-			// could have shrunk inputDevicesFiltered / outputDevicesFiltered
-			// through onAudioDevicesChanged → GetAudioDevices, leaving the
-			// indices we captured at OK time pointing past the end.
-			// Skip the reopen rather than crashing in operator[]; the
-			// user can reopen the dialog and re-pick from the current
-			// list. Settings are already saved at this point so the
-			// id-based persistence will pick up the right device on
-			// next launch.
-			//
-			// Index against the *filtered* lists — CaptureIndex came
-			// from a combo populated from CaptureNames (surround
-			// entries skipped), so the unfiltered inputDevices list
-			// would shift selections by the count of skipped entries.
-			if (CaptureIndex < 0 || CaptureIndex >= inputDevicesFiltered.size() ||
-				PlayBackIndex < 0 || PlayBackIndex >= outputDevicesFiltered.size())
+			// Resolve the chosen devices by id against the *current*
+			// lists: a hot-plug delivered while the dialog was open
+			// (onAudioDevicesChanged -> GetAudioDevices) may have
+			// reordered or shrunk them, so the OK-time combo index is
+			// not trustworthy. If either device is no longer present
+			// (or was the appended "not present" entry), skip the
+			// reopen; settings are saved, so id-based persistence picks
+			// the right device up when it returns.
+			auto byId = [](const QList<QAudioDevice> &list, const QByteArray &id)
 			{
-				Debugprintf("Audio device list changed while Devices dialog "
-					"was open (CaptureIndex=%d, count=%lld; PlayBackIndex=%d, "
-					"count=%lld); skipping reopen — please re-pick from "
-					"Settings → Devices",
-					CaptureIndex, (long long)inputDevicesFiltered.size(),
-					PlayBackIndex, (long long)outputDevicesFiltered.size());
+				for (const QAudioDevice &d : list)
+					if (!id.isEmpty() && d.id() == id)
+						return d;
+				return QAudioDevice();
+			};
+			const QAudioDevice newIn = byId(inputDevicesFiltered, selInId);
+			const QAudioDevice newOut = byId(outputDevicesFiltered, selOutId);
+
+			if (newIn.isNull() || newOut.isNull())
+			{
+				Debugprintf("Selected audio device not present (input %s, "
+					"output %s); skipping reopen",
+					newIn.isNull() ? "missing" : "ok",
+					newOut.isNull() ? "missing" : "ok");
 			}
 			else
 			{
 				closeQSound();
 
-				inDeviceInfo = inputDevicesFiltered[CaptureIndex];
-				outDeviceInfo = outputDevicesFiltered[PlayBackIndex];
+				inDeviceInfo = newIn;
+				outDeviceInfo = newOut;
 
 #if defined(Q_OS_MACOS)
 				// Streams are now closed and the user-chosen
