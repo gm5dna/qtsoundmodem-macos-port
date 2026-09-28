@@ -250,7 +250,7 @@ void mynet::MyTimerSlot()
 {
 	// 100 mS Timer Event
 
-	TimerEvent = TIMER_EVENT_ON;
+	__atomic_store_n(&TimerEvent, TIMER_EVENT_ON, __ATOMIC_RELEASE);	// worker polls it
 }
 
 

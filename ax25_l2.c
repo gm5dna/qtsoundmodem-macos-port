@@ -1186,7 +1186,7 @@ void timer_event()
 	Byte  active;
 	TAX25Port * AX25Sess;
 
-	TimerEvent = TIMER_EVENT_OFF;
+	__atomic_store_n(&TimerEvent, TIMER_EVENT_OFF, __ATOMIC_RELAXED);
 
 	for (snd_ch = 0; snd_ch < 4; snd_ch++)
 	{
