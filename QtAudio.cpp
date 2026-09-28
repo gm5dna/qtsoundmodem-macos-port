@@ -30,6 +30,7 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 #include <QMutex>
 #include <QCoreApplication>
 #include <atomic>
+#include <mutex>
 
 #include "UZ7HOStuff.h"
 
@@ -138,23 +139,19 @@ static bool s_devChangeDeferred = false;
  // txSleep or anything that would block. File-static, not a class
  // member, because the worker callbacks have C linkage and don't
  // carry a `this`.
- static QMutex s_audioMutex;
+ // std::mutex rather than QMutex so ThreadSanitizer can see it.
+ static std::mutex s_audioMutex;
 
- // Set by closeQSound (GUI thread, capture teardown / device swap),
- // consumed by PollQSound at entry on the worker thread. closeQSound
- // tears down the QAudioSource but does NOT drain the accumulated
- // capture Buffer, and the PollQSound decimation loop runs outside
- // s_audioMutex by design (teardown responsiveness), so without this
- // a back-to-back closeQSound()+initializeAudioIn() (the deviceaccept
- // path) leaves stale old-stream bytes in Buffer plus a stale
- // sub-frame carry. Those would: (a) prepend a stale tail to the new
- // device's stream, and (b) let a stale chunk consume the deferred
- // FIR-history reset before the new stream's first chunk. Dropping
- // the buffered capture state on the worker thread — the sole owner
- // of BufferLen and the carry — at the next poll closes both races
- // without taking s_audioMutex over the hot decimation path. (Codex
- // third-pass catch on items 6 and 7.)
- static std::atomic<int> capture_reset_pending{0};
+ // Capture generation. The GUI thread opens and tears down capture;
+ // the worker (PollQSound) owns Buffer/BufferLen, the sub-frame carry
+ // and the FIR state. Every open and teardown publishes the stream's
+ // parameters and bumps s_capGen under s_audioMutex. The worker applies
+ // a new generation (drop buffered capture, redesign/flush the FIR)
+ // inside the same lock hold as its read, so bytes from two streams
+ // can never mix and the FIR is never touched by the GUI thread.
+ struct CaptureParams { int rate, decim, channels; };
+ static CaptureParams s_capParams = { 12000, 1, 2 };	// under s_audioMutex
+ static std::atomic<unsigned> s_capGen{0};			// bumped under s_audioMutex
 
 #ifndef WIN32
  extern "C" int stricmp(char * pStr1, char *pStr2);
@@ -329,7 +326,25 @@ static bool s_devChangeDeferred = false;
  }
 
  // Consecutive automatic output reopens; see audioOutStateChanged.
- static int s_outRecoveries = 0;
+ // Atomic: reset by the worker in qtAudioConsumeSinkIdle.
+ static std::atomic<int> s_outRecoveries{0};
+
+ // SoundIsPlaying is read and written by the modem worker (DoTX sets it,
+ // SoundFlush waits on it). The sink's stateChanged slots run on the GUI
+ // thread, so instead of writing it themselves they raise this flag and
+ // the worker clears SoundIsPlaying when it next polls.
+ static std::atomic<int> s_sinkIdle{0};
+
+ // Worker thread: PollQSound entry and the SoundFlush wait loop.
+ extern "C" void qtAudioConsumeSinkIdle()
+ {
+	 if (s_sinkIdle.exchange(0))
+	 {
+		 if (SoundIsPlaying)
+			 s_outRecoveries = 0;	// a TX drained: the sink works
+		 SoundIsPlaying = 0;
+	 }
+ }
 
  void QtSoundModem::audioOutStateChanged(QAudio::State newState)
  {
@@ -354,7 +369,7 @@ static bool s_devChangeDeferred = false;
 			 // wasn't actively waiting when the state changed.
 			 Debugprintf("audioOutStateChanged: sink stopped with error %d — Tx aborted",
 				 (int)m_audioOutput->error());
-			 SoundIsPlaying = 0;
+			 s_sinkIdle.store(1);
 
 			 // A stopped sink never restarts by itself, so every later
 			 // TX would key PTT with no audio. Reopen the same device
@@ -376,7 +391,7 @@ static bool s_devChangeDeferred = false;
 					 if (m_audioOutput->state() != QAudio::StoppedState)
 						 return;
 					 Debugprintf("audioOutStateChanged: reopening output '%s' (attempt %d)",
-						 outDeviceInfo.description().toUtf8().constData(), s_outRecoveries);
+						 outDeviceInfo.description().toUtf8().constData(), s_outRecoveries.load());
 					 {
 						 QMutexLocker locker(&s_audioMutex);
 						 disconnect(m_audioOutput, &QAudioSink::stateChanged,
@@ -407,11 +422,7 @@ static bool s_devChangeDeferred = false;
 			 // I think we should turn round the link here. I dont see the point in
 	 // waiting for MainPoll
 
-		 if (SoundIsPlaying)
-		 {
-			SoundIsPlaying = 0;
-			s_outRecoveries = 0;	// a TX drained: sink works again
-		 }
+		 s_sinkIdle.store(1);	// worker clears SoundIsPlaying
 		 break;
 
 
@@ -702,13 +713,9 @@ static bool s_devChangeDeferred = false;
 				 m_audioInput->deleteLater();
 				 m_audioInput = nullptr;
 			 }
-			 // Hot-unplug tears the input down here, NOT via
-			 // closeQSound, and the device is auto-reopened on replug.
-			 // Request the same capture-state drop so a half-chunk left
-			 // in Buffer (plus any sub-frame carry) from the vanished
-			 // device can't be prepended to the re-opened stream.
-			 // (Codex fourth-pass catch on item 6.)
-			 capture_reset_pending.store(1, std::memory_order_release);
+			 // New capture generation: the worker drops whatever it
+			 // buffered from the vanished device.
+			 ++s_capGen;
 			 inDeviceInfo = QAudioDevice();
 		 }
 		 if (outGone)
@@ -727,8 +734,7 @@ static bool s_devChangeDeferred = false;
 			 // clears SoundIsPlaying, but a torn-down sink will not
 			 // emit it. Clear here so DoTX's "still playing?" guard
 			 // does not wedge transmit until restart.
-			 extern int SoundIsPlaying;
-			 SoundIsPlaying = 0;
+			 s_sinkIdle.store(1);
 		 }
 	 }
 
@@ -1028,10 +1034,6 @@ static bool s_devChangeDeferred = false;
 			 g_audioInputRate, format.channelCount(),
 			 (int)format.sampleFormat());
 
-	 // Design (or re-design) the antialias FIR for the negotiated rate.
-	 // No-op if the rate hasn't changed since last call.
-	 aaFilterInit(g_audioInputRate);
-
 	 qDebug() << "Opening Input Device " << deviceInfo.description();
 	 qDebug() << "Sample Rate" << g_audioInputRate
 		 << "(decimation factor" << g_audioInputDecim << "to 12 kHz)";
@@ -1047,6 +1049,10 @@ static bool s_devChangeDeferred = false;
 	 QAudio::Error startErr = QAudio::NoError;
 	 {
 		 QMutexLocker locker(&s_audioMutex);
+		 // The worker designs the FIR for this rate when it picks the
+		 // new generation up.
+		 s_capParams = { g_audioInputRate, g_audioInputDecim, g_audioInputChannelCount };
+		 ++s_capGen;
 		 m_audioInput = new QAudioSource(deviceInfo, format, this);
 		 connect(m_audioInput, &QAudioSource::stateChanged, this, &QtSoundModem::audioInStateChanged);
 
@@ -1293,14 +1299,9 @@ static bool s_devChangeDeferred = false;
 		 m_audioOutput = nullptr;
 	 }
 
-	 // Discard whatever the worker accumulated for the old stream:
-	 // its leftover Buffer bytes and sub-frame carry must not bleed
-	 // into the replacement device (deviceaccept calls closeQSound()
-	 // then initializeAudioIn() back-to-back, so the worker may never
-	 // observe the null window). Done as a flag consumed by PollQSound
-	 // on the worker thread — the sole writer of BufferLen / the carry
-	 // — so we don't take s_audioMutex over the decimation loop.
-	 capture_reset_pending.store(1, std::memory_order_release);
+	 // New capture generation: the worker drops whatever it buffered
+	 // for the old stream before touching the next one.
+	 ++s_capGen;
  }
 
  extern "C" void txSleep(int mS);
@@ -1404,7 +1405,7 @@ extern "C" void qtAudioTxStart()
 	 // / MacBits.c reset or advance after SendtoCard rather than re-reading
 	 // the sent buffer (verified during plan review). Since txLvl ≤ 100,
 	 // |sample * txLvl / 100| ≤ |sample| ≤ 32767 — no saturation needed.
-	 const int txLvl = txAudioLevel;
+	 const int txLvl = __atomic_load_n(&txAudioLevel, __ATOMIC_RELAXED);	// GUI slider writes it
 	 if (txLvl != 100)
 	 {
 		 short * s = (short *)buf;
@@ -1446,8 +1447,6 @@ char Buffer[65536];
 
 int BufferLen = 0;
 
-extern int g_audioInputRate;
-extern int g_audioInputDecim;
 
 #if defined(Q_OS_MACOS)
 // --dump-input <path> support: write the captured Qt audio to a
@@ -1543,16 +1542,6 @@ static int fir_designed_rate = 0;  // 0 = needs design
 static float fir_histL[FIR_TAPS - 1];
 static float fir_histR[FIR_TAPS - 1];
 
-// Set by aaFilterInit (GUI thread, on every capture (re)open),
-// consumed by decimateAudioToModem (worker thread, the sole owner of
-// fir_histL/R). aaFilterInit must NOT zero the history itself: it
-// runs outside s_audioMutex, the decimation loop in PollQSound also
-// runs outside it, so a direct clear races the in-flight decimator —
-// whose trailing-history memcpy would re-fill the just-cleared arrays
-// with the previous stream's tail and defeat the flush. Deferring the
-// flush to the worker thread that owns the history removes the race
-// entirely. (Codex second-reviewer catch on BUG-rx-audit item 7.)
-static std::atomic<int> fir_hist_reset_pending{0};
 
 extern "C" void aaFilterInit(int sampleRateIn)
 {
@@ -1564,22 +1553,16 @@ extern "C" void aaFilterInit(int sampleRateIn)
 	if (sampleRateIn < 12000)
 		sampleRateIn = 12000;
 
-	// Request a decimator-history flush on every (re)open, even when
-	// the rate is unchanged. aaFilterInit is called from
-	// initializeAudioIn on every device open; the coefficient
-	// recompute below is correctly gated on a rate change (it is the
-	// expensive part and is otherwise rate-invariant), but the
-	// FIR_TAPS-1-sample history tail belongs to the *previous*
-	// stream. A same-rate device swap — close then reopen the same
-	// device, or a hot-replug at an unchanged rate — used to hit the
-	// rate-match early-return and carry ~2.6 ms (126 samples at
-	// 48 kHz) of the old stream into the first chunk of the new one,
-	// a small but real discontinuity / click at the demod input.
-	//
-	// The actual zeroing is deferred to decimateAudioToModem on the
-	// worker thread (see fir_hist_reset_pending) so it can't race the
-	// in-flight decimator.
-	fir_hist_reset_pending.store(1, std::memory_order_release);
+	// Called on the worker thread only (PollQSound on a new capture
+	// generation, and the --decode-wav harnesses), the thread that owns
+	// the FIR state. Flush the history on every (re)open, even at an
+	// unchanged rate: its FIR_TAPS-1 samples belong to the previous
+	// stream and would otherwise click into the first chunk.
+	for (int i = 0; i < FIR_TAPS - 1; i++)
+	{
+		fir_histL[i] = 0.0f;
+		fir_histR[i] = 0.0f;
+	}
 
 	if (sampleRateIn == fir_designed_rate)
 		return;  // coefficients already valid for this rate
@@ -1623,21 +1606,6 @@ static inline short fir_clip16(float x)
 // harness exercises the same DSP the live build does.
 extern "C" void decimateAudioToModem(const short * src, int decim, short * dst)
 {
-	// Honour a pending history flush requested by aaFilterInit on a
-	// capture (re)open. Done here, on the sole thread that reads and
-	// writes fir_histL/R, so the flush cannot race the decimator's
-	// own trailing-history save. exchange() consumes the request
-	// exactly once even across the early-return paths below (decim<=1
-	// / decim>8 / undesigned), so a reset issued while the device is
-	// at 12 kHz is still honoured once it later decimates.
-	if (fir_hist_reset_pending.exchange(0, std::memory_order_acquire))
-	{
-		for (int i = 0; i < FIR_TAPS - 1; i++)
-		{
-			fir_histL[i] = 0.0f;
-			fir_histR[i] = 0.0f;
-		}
-	}
 
 	if (decim <= 1)
 	{
@@ -1747,7 +1715,8 @@ extern "C" void PollQSound()
 		if (m_audioInput && in)
 		{
 			static char scratch[16384];
-			const qint64 frame = (g_audioInputChannelCount == 1) ? 2 : 4;
+			// s_capParams describes the stream `in` belongs to.
+			const qint64 frame = (s_capParams.channels == 1) ? 2 : 4;
 			qint64 n = in->bytesAvailable();
 			n -= n % frame;		// whole frames only
 			while (n > 0)
@@ -1772,7 +1741,44 @@ extern "C" void PollQSound()
 	//   decim=1 (12 kHz):  2048 bytes
 	//   decim=2 (24 kHz):  4096 bytes
 	//   decim=4 (48 kHz):  8192 bytes
-	const int decim = g_audioInputDecim;
+	// Carry for a sub-frame tail. QAudioSource delivers whole frames
+	// in practice, but QIODevice::read carries no such guarantee. If a
+	// backend ever returns a non-frame-aligned byte count, dropping
+	// the remainder does NOT restore alignment: the device's byte
+	// stream is contiguous, so its next bytes continue the same
+	// logical frame — discarding our side desyncs framing for the
+	// rest of the session. Instead hold the <frameBytes leftover here
+	// and prepend it to the next read so the device stream stays
+	// byte-contiguous. (Codex second-reviewer catch on
+	// BUG-rx-audit item 6.)
+	qtAudioConsumeSinkIdle();
+
+	static char s_partialTail[4];   // frameBytes is at most 4
+	static int  s_partialTailLen = 0;
+
+	// The worker's view of the capture stream, and the generation it
+	// belongs to. Picking up a new generation drops everything buffered
+	// from the previous stream and redesigns/flushes the FIR, all on
+	// this thread (see s_capGen).
+	static CaptureParams s_work = { 12000, 1, 2 };
+	static unsigned s_appliedGen = 0;
+	bool newStream = false;
+	{
+		QMutexLocker locker(&s_audioMutex);
+		const unsigned gen = s_capGen.load();
+		if (gen != s_appliedGen)
+		{
+			s_appliedGen = gen;
+			s_work = s_capParams;
+			BufferLen = 0;
+			s_partialTailLen = 0;
+			newStream = true;
+		}
+	}
+	if (newStream)
+		aaFilterInit(s_work.rate);
+
+	const int decim = s_work.decim;
 	const int outChunkBytes = 2048;
 	const int inChunkBytes = outChunkBytes * decim;
 
@@ -1788,45 +1794,22 @@ extern "C" void PollQSound()
 	// half its intended baud — what the AFSK demod was getting
 	// away with on Stuart's CM108 is a coincidence of audio centre
 	// frequency, not a property of the data path.
-	const bool monoInput = (g_audioInputChannelCount == 1);
+	const bool monoInput = (s_work.channels == 1);
 
 	// Frame size in the raw, pre-mono-expansion byte domain: one
 	// int16 for mono input, an L/R pair for stereo.
 	const qint64 frameBytes =
 		monoInput ? (qint64)sizeof(short) : (qint64)(2 * sizeof(short));
 
-	// Carry for a sub-frame tail. QAudioSource delivers whole frames
-	// in practice, but QIODevice::read carries no such guarantee. If a
-	// backend ever returns a non-frame-aligned byte count, dropping
-	// the remainder does NOT restore alignment: the device's byte
-	// stream is contiguous, so its next bytes continue the same
-	// logical frame — discarding our side desyncs framing for the
-	// rest of the session. Instead hold the <frameBytes leftover here
-	// and prepend it to the next read so the device stream stays
-	// byte-contiguous. (Codex second-reviewer catch on
-	// BUG-rx-audit item 6.)
-	static char s_partialTail[4];   // frameBytes is at most 4
-	static int  s_partialTailLen = 0;
 
-	// Honour a capture-teardown request from closeQSound before doing
-	// anything with the buffer. Runs on the worker thread, the sole
-	// writer of BufferLen and the carry, so dropping them here is
-	// race-free. Discards stale old-stream bytes still queued in
-	// Buffer (teardown does not drain it) and any pending sub-frame
-	// tail, so a back-to-back device swap can neither prepend a stale
-	// carry to the new stream nor let a leftover old chunk consume
-	// the deferred FIR-history reset before the new stream's first
-	// chunk. The FIR flush itself is requested separately by
-	// aaFilterInit on the subsequent open.
-	if (capture_reset_pending.exchange(0, std::memory_order_acquire))
-	{
-		BufferLen = 0;
-		s_partialTailLen = 0;
-	}
 
 	qint64 x;
 	{
 		QMutexLocker locker(&s_audioMutex);
+		// Stream changed since we applied its parameters above: read
+		// nothing now; the next call picks the new generation up.
+		if (s_capGen.load() != s_appliedGen)
+			return;
 		if (!m_audioInput)
 		{
 			s_partialTailLen = 0;   // stale across a device change
@@ -1914,7 +1897,7 @@ extern "C" void PollQSound()
 		// so both the FIR-decimated 12 kHz path and the native-rate RUH/dw9600
 		// path (which bypasses decimateAudioToModem) see the same gain.
 		// Sign-aware rounding minimises low-bit truncation at low levels.
-		const int rxLvl = rxAudioLevel;
+		const int rxLvl = __atomic_load_n(&rxAudioLevel, __ATOMIC_RELAXED);	// GUI slider writes it
 		if (rxLvl != 100)
 		{
 			short * s = (short *)&Buffer[BufferLen - x];
@@ -1954,23 +1937,10 @@ extern "C" void PollQSound()
 	s_inPoll = 1;
 	while (BufferLen >= inChunkBytes)
 	{
-		// Re-check the teardown request inside the drain loop, not
-		// just at PollQSound entry: closeQSound / onAudioDevicesChanged
-		// can set it while we are mid-drain on stale old-stream chunks.
-		// Honouring it here drops the remaining buffered old data
-		// before it is decimated (which would otherwise consume the
-		// deferred FIR-history reset and save the old tail) and before
-		// a stale sub-frame carry is applied. Genuinely closing the
-		// GUI-close-races-an-in-flight-worker window needs a capture
-		// generation token / worker quiesce — a pre-existing
-		// architectural gap, see BUG-rx-audit "Known residual" — but
-		// this shrinks the window to a single in-progress chunk.
-		if (capture_reset_pending.exchange(0, std::memory_order_acquire))
-		{
-			BufferLen = 0;
-			s_partialTailLen = 0;
+		// Stop on a device change mid-drain; the next call drops the
+		// remaining old-stream chunks when it applies the generation.
+		if (s_capGen.load() != s_appliedGen)
 			break;
-		}
 
 		short * src = (short *)Buffer;
 		short * processed;
