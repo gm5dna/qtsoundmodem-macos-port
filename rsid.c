@@ -284,7 +284,7 @@ void RSIDProcessSamples(short * Samples, int nSamples)
 	memcpy(&savedSamples[savedSampLen], Samples, nSamples * sizeof(short));
 	savedSampLen += nSamples;
 
-	if (savedSampLen >= 512 * 2)				// Old + New
+	while (savedSampLen >= 512 * 2)				// Old + New
 	{
 		int peakBucket;
 
@@ -298,7 +298,7 @@ void RSIDProcessSamples(short * Samples, int nSamples)
 		}
 
 		savedSampLen -= 512;
-		memmove(savedSamples, &savedSamples[512 * sizeof(short)], savedSampLen * sizeof(short));
+		memmove(savedSamples, &savedSamples[512], savedSampLen * sizeof(short));
 
 		Search();
 	}
