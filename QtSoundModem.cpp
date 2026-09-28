@@ -5736,6 +5736,32 @@ extern "C" void decimateAudioToModem(const short * src, int decim, short * dst)
 
 extern "C" void PollQSound()
 {
+	// Re-entry guard. The drain loop below calls ProcessNewSamples ->
+	// BufferFull -> chk_dcd1 -> RX2TX -> DoTX, and TX's txSleep polls
+	// capture again. Buffer, BufferLen and the carry belong to the
+	// outer call, so a nested call must not touch them (it used to,
+	// driving BufferLen negative). It only keeps the device drained;
+	// RX is discarded during TX anyway.
+	static int s_inPoll = 0;
+	if (s_inPoll)
+	{
+		QMutexLocker locker(&s_audioMutex);
+		if (m_audioInput && in)
+		{
+			static char scratch[16384];
+			qint64 n = in->bytesAvailable();
+			n -= n % 4;		// whole frames, mono (2) or stereo (4)
+			while (n > 0)
+			{
+				const qint64 r = in->read(scratch, qMin(n, (qint64)sizeof(scratch)));
+				if (r <= 0)
+					break;
+				n -= r;
+			}
+		}
+		return;
+	}
+
 	// Process any captured samples
 	// Ideally call at least every 100 mS, more than 200 will loose data
 
@@ -5926,6 +5952,7 @@ extern "C" void PollQSound()
 	// least decode.
 	const bool nativeRUHPath = (using48000 && decim == 4);
 
+	s_inPoll = 1;
 	while (BufferLen >= inChunkBytes)
 	{
 		// Re-check the teardown request inside the drain loop, not
@@ -6027,6 +6054,7 @@ extern "C" void PollQSound()
 		BufferLen -= inChunkBytes;
 		memmove(Buffer, Buffer + inChunkBytes, BufferLen);
 	}
+	s_inPoll = 0;
 }
 
 
