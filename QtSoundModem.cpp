@@ -1296,6 +1296,8 @@ void QtSoundModem::returnPressed()
 
 }
 
+bool qtAudioRequestModem(int ch, int modem);
+
 void CheckforChanges(int Mode, int OldMode)
 {
 	int old48000 = using48000;
@@ -1311,6 +1313,9 @@ void CheckforChanges(int Mode, int OldMode)
 
 		msgBox.exec();
 	}
+
+	if (SoundMode == 5)
+		return;			// Qt audio: the worker applies it (qtAudioRequestModem)
 
 	// See if need to switch beween 12000 and 48000
 
@@ -1345,6 +1350,11 @@ void QtSoundModem::clickedSlotI(int i)
 	{
 		int OldModem = ModemA;
 		ModemA = ui.modeA->currentIndex();
+		if (qtAudioRequestModem(0, ModemA))
+		{
+			CheckforChanges(ModemA, OldModem);	// warning only
+			return;
+		}
 		set_speed(0, ModemA);
 		CheckforChanges(ModemA, OldModem);
 		saveSettings();
@@ -1356,6 +1366,11 @@ void QtSoundModem::clickedSlotI(int i)
 	{
 		int OldModem = ModemB;
 		ModemB = ui.modeB->currentIndex();
+		if (qtAudioRequestModem(1, ModemB))
+		{
+			CheckforChanges(ModemB, OldModem);	// warning only
+			return;
+		}
 		set_speed(1, ModemB);
 		CheckforChanges(ModemB, OldModem);
 		saveSettings();
@@ -1367,6 +1382,11 @@ void QtSoundModem::clickedSlotI(int i)
 	{
 		int OldModem = ModemC;
 		ModemC = ui.modeC->currentIndex();
+		if (qtAudioRequestModem(2, ModemC))
+		{
+			CheckforChanges(ModemC, OldModem);	// warning only
+			return;
+		}
 		set_speed(2, ModemC);
 		CheckforChanges(ModemC, OldModem);
 		saveSettings();
@@ -1378,6 +1398,11 @@ void QtSoundModem::clickedSlotI(int i)
 	{
 		int OldModem = ModemD;
 		ModemD = ui.modeD->currentIndex();
+		if (qtAudioRequestModem(3, ModemD))
+		{
+			CheckforChanges(ModemD, OldModem);	// warning only
+			return;
+		}
 		set_speed(3, ModemD);
 		CheckforChanges(ModemD, OldModem);
 		saveSettings();

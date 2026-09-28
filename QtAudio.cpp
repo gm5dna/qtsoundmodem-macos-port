@@ -37,6 +37,11 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 #include <time.h>
 
 // Globals owned by QtSoundModem.cpp.
+extern QtSoundModem * w;
+void saveSettings();
+extern "C" void set_speed(int snd_ch, int Modem);
+extern "C" void AGW_Report_Modem_Change(int port);
+extern "C" int InitSound(BOOL Report);
 extern workerThread *t;
 extern QCoreApplication * a;
 extern serialThread *serial;
@@ -334,6 +339,77 @@ static bool s_devChangeDeferred = false;
  // thread, so instead of writing it themselves they raise this flag and
  // the worker clears SoundIsPlaying when it next polls.
  static std::atomic<int> s_sinkIdle{0};
+
+ // Modem-type changes from the main-window combos. set_speed (demod
+ // and filter re-init) and the 12/48 kHz switch used to run on the GUI
+ // thread while the worker was demodulating and modulating with them.
+ // Under Qt audio the GUI only records the request; the worker applies
+ // it at the top of PollQSound when no channel is transmitting
+ // (SampleSink depends on SendSize mid-frame), then reports it to AGW
+ // clients and saves settings back on the GUI thread.
+ static int s_modemReq[4] = { -1, -1, -1, -1 };	// under s_audioMutex
+ static std::atomic<bool> s_modemReqPending{false};
+
+ // GUI thread. Returns false when not using Qt audio: the caller then
+ // applies the change itself, as upstream does.
+ bool qtAudioRequestModem(int ch, int modem)
+ {
+	 if (SoundMode != 5 || ch < 0 || ch > 3)
+		 return false;
+	 std::lock_guard<std::mutex> locker(s_audioMutex);
+	 s_modemReq[ch] = modem;
+	 s_modemReqPending = true;
+	 return true;
+ }
+
+ static void applyModemRequests()
+ {
+	 if (!s_modemReqPending.load())
+		 return;
+	 for (int i = 0; i < 4; i++)
+		 if (tx_status[i] != TX_SILENCE)
+			 return;		// retry on a later poll
+
+	 int req[4];
+	 {
+		 std::lock_guard<std::mutex> locker(s_audioMutex);
+		 for (int i = 0; i < 4; i++)
+		 {
+			 req[i] = s_modemReq[i];
+			 s_modemReq[i] = -1;
+		 }
+		 s_modemReqPending = false;
+	 }
+
+	 for (int i = 0; i < 4; i++)
+		 if (req[i] >= 0)
+			 set_speed(i, req[i]);
+
+	 // Same rule as the constructor and CheckforChanges.
+	 const int old48000 = using48000;
+	 using48000 = 0;
+	 ReceiveSize = 512;
+	 SendSize = 1024;
+	 for (int i = 0; i < 4; i++)
+	 {
+		 if (soundChannel[i] && (speed[i] == SPEED_RUH48 || speed[i] == SPEED_RUH96))
+		 {
+			 using48000 = 1;
+			 ReceiveSize = 2048;
+			 SendSize = 4096;
+		 }
+	 }
+	 if (using48000 != old48000)
+		 InitSound(1);
+
+	 QMetaObject::invokeMethod(w, [req]()
+		 {
+			 for (int i = 0; i < 4; i++)
+				 if (req[i] >= 0)
+					 AGW_Report_Modem_Change(i);
+			 saveSettings();
+		 }, Qt::QueuedConnection);
+ }
 
  // Worker thread: PollQSound entry and the SoundFlush wait loop.
  extern "C" void qtAudioConsumeSinkIdle()
@@ -1752,6 +1828,7 @@ extern "C" void PollQSound()
 	// byte-contiguous. (Codex second-reviewer catch on
 	// BUG-rx-audit item 6.)
 	qtAudioConsumeSinkIdle();
+	applyModemRequests();
 
 	static char s_partialTail[4];   // frameBytes is at most 4
 	static int  s_partialTailLen = 0;
