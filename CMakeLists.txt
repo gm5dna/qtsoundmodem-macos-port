@@ -286,6 +286,18 @@ endif()
 # job. The upstream C is noisy at -Wall, so never add -Werror here.
 option(QSM_WARNINGS "Build with -Wall -Wextra" OFF)
 option(QSM_TSAN "Build with ThreadSanitizer" OFF)
+# Port-owned sources must stay warning-free; CI builds with this on.
+# (-Wno-inconsistent-missing-override: upstream's QtSoundModem.h.)
+# Off by default so a new compiler/Qt deprecation can't break user builds.
+option(QSM_STRICT "Treat warnings as errors in port-owned sources" OFF)
+if(QSM_STRICT)
+    set(QSM_PORT_SOURCES QtAudio.cpp main.cpp)
+    if(APPLE)
+        list(APPEND QSM_PORT_SOURCES MacBits.c MacPermissions.mm MacAudioRate.mm)
+    endif()
+    set_source_files_properties(${QSM_PORT_SOURCES} PROPERTIES
+        COMPILE_OPTIONS "-Wall;-Wextra;-Werror;-Wno-inconsistent-missing-override")
+endif()
 if(QSM_WARNINGS)
     target_compile_options(QtSoundModem PRIVATE -Wall -Wextra)
 endif()
