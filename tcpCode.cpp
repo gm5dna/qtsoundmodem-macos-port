@@ -1021,9 +1021,6 @@ void mynet::OpenUDP()
 	if (UDPServ)
 	{
 		udpSocket->bind(QHostAddress("0.0.0.0"), UDPServerPort);
-		QTimer *timer = new QTimer(this);
-		timercopy = timer;
-		connect(timer, SIGNAL(timeout()), this, SLOT(dropPTT()));
 	}
 	else
 		udpSocket->bind(QHostAddress("0.0.0.0"), UDPClientPort);
@@ -1032,20 +1029,20 @@ void mynet::OpenUDP()
 }
 
 extern "C" void Flush();
+extern "C" unsigned int getTicks(void);
 
-void mynet::dropPTT()
+// Server mode: time of the last datagram. The worker drops PTT 200 ms
+// after the stream stops (UDPPollReceivedSamples); this used to be a
+// GUI-thread QTimer that ran Flush/SoundFlush and RadioPTT off the
+// modem thread.
+static unsigned int s_udpLastRx = 0;
+
+static int udpQueued()
 {
-	timercopy->stop();
-	
-	if (UDPSoundIsPlaying)
-	{
-		// Drop PTT when all sent
-
-		Flush();
-		UDPSoundIsPlaying = 0;
-		Debugprintf("PTT Off");
-		RadioPTT(0, 0);
-	}
+	mutex.lock();
+	const int n = queue.count();
+	mutex.unlock();
+	return n;
 }
 
 void mynet::readPendingDatagrams()
@@ -1060,7 +1057,7 @@ void mynet::readPendingDatagrams()
 		// We should get a datagram every 43 mS. We need to use a timeout to drop PTT if running as server
 
 		if (UDPServ)
-			timercopy->start(200);
+			__atomic_store_n(&s_udpLastRx, getTicks(), __ATOMIC_RELAXED);
 
 		int Len = udpSocket->readDatagram(copy, 1500, &Addr, &rxPort);
 
@@ -1144,7 +1141,13 @@ extern "C" void sendSamplestoUDP(short * Samples, int nSamples, int Port)
 
 	memcpy(&txBuff[16], Samples, nSamples);
 
-	udpSocket->writeDatagram((char *)txBuff, nSamples + 16, QHostAddress(UDPHost), Port);
+	// Called on the modem worker (BufferFull); udpSocket belongs to the
+	// GUI thread, so send from a socket created on this thread. UDP
+	// writeDatagram needs no event loop.
+	static QUdpSocket * s_txSock = nullptr;
+	if (!s_txSock)
+		s_txSock = new QUdpSocket();
+	s_txSock->writeDatagram((char *)txBuff, nSamples + 16, QHostAddress(UDPHost), Port);
 }
 
 static int min = 0, max = 0, lastlevelGUI = 0, lastlevelreport = 0;
@@ -1161,7 +1164,17 @@ extern "C" void ProcessNewSamples(short * Samples, int nSamples);
 
 extern "C" void UDPPollReceivedSamples()
 {
-	if (queue.isEmpty())
+	if (UDPServ && UDPSoundIsPlaying && udpQueued() == 0 &&
+		getTicks() - __atomic_load_n(&s_udpLastRx, __ATOMIC_RELAXED) > 200)
+	{
+		// Stream stopped: drop PTT when all sent.
+		Flush();
+		UDPSoundIsPlaying = 0;
+		Debugprintf("PTT Off");
+		RadioPTT(0, 0);
+	}
+
+	if (udpQueued() == 0)
 		return;
 
 	short * ptr;
@@ -1187,7 +1200,7 @@ extern "C" void UDPPollReceivedSamples()
 		{
 			// Wait for a couple of packets to reduce risk of underrun (but not too many or delay will be excessive
 
-			if (queue.count() < 3)
+			if (udpQueued() < 3)
 				return;
 
 			UDPSoundIsPlaying = 1;
@@ -1197,7 +1210,7 @@ extern "C" void UDPPollReceivedSamples()
 			/// !! how do we drop ptt ??
 		}
 
-		while (queue.count() > 1)
+		while (udpQueued() > 1)
 		{
 			short * outptr = DMABuffer;
 			boolean dropPTT1 = 1;

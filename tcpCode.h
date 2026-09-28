@@ -53,7 +53,6 @@ public slots:
 	void on6PackConnection();
 	void on6PackReadyRead();
 	void on6PackSocketStateChanged(QAbstractSocket::SocketState socketState);
-	void dropPTT();
 
 	void displayError(QAbstractSocket::SocketError socketError);
 
