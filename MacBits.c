@@ -564,6 +564,11 @@ int InitSound(BOOL Report)
 	(void)Report;
 	if (SoundMode == 5)
 	{
+		// QtSoundInit sets this in GUI mode; the harnesses never run it,
+		// so a TX there (e.g. an AGW client in a stress test) wrote
+		// through a NULL DMABuffer.
+		DMABuffer = QtDMABuffer;
+
 		// Both --decode-wav harness modes use nogui + bypass Qt audio;
 		// allow init to succeed so the worker loop runs into the
 		// harness dispatch in tcpCode.cpp.
