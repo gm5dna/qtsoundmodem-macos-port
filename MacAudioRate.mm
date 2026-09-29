@@ -27,6 +27,12 @@ enum {
     QSM_RETUNE_ERR_NOT_SETTABLE     = -7,
 };
 
+static const AudioObjectPropertyAddress kNominalRate = {
+    kAudioDevicePropertyNominalSampleRate,
+    kAudioObjectPropertyScopeGlobal,
+    kAudioObjectPropertyElementMain
+};
+
 static AudioDeviceID lookupDeviceByUID(const char *uidUtf8) {
     if (!uidUtf8 || !*uidUtf8) return kAudioObjectUnknown;
     CFStringRef uid = CFStringCreateWithCString(
@@ -50,23 +56,13 @@ static AudioDeviceID lookupDeviceByUID(const char *uidUtf8) {
 }
 
 static OSStatus getCurrentRate(AudioDeviceID dev, Float64 *out) {
-    AudioObjectPropertyAddress a = {
-        kAudioDevicePropertyNominalSampleRate,
-        kAudioObjectPropertyScopeGlobal,
-        kAudioObjectPropertyElementMain
-    };
     UInt32 sz = sizeof(*out);
-    return AudioObjectGetPropertyData(dev, &a, 0, NULL, &sz, out);
+    return AudioObjectGetPropertyData(dev, &kNominalRate, 0, NULL, &sz, out);
 }
 
 static Boolean rateIsSettable(AudioDeviceID dev) {
-    AudioObjectPropertyAddress a = {
-        kAudioDevicePropertyNominalSampleRate,
-        kAudioObjectPropertyScopeGlobal,
-        kAudioObjectPropertyElementMain
-    };
     Boolean settable = false;
-    OSStatus st = AudioObjectIsPropertySettable(dev, &a, &settable);
+    OSStatus st = AudioObjectIsPropertySettable(dev, &kNominalRate, &settable);
     return (st == noErr) && settable;
 }
 
@@ -95,12 +91,6 @@ static Boolean deviceSupportsRate(AudioDeviceID dev, Float64 rate) {
 
 static int setRateAndWait(AudioDeviceID dev, Float64 desired,
                           char *errBuf, int errBufLen) {
-    AudioObjectPropertyAddress a = {
-        kAudioDevicePropertyNominalSampleRate,
-        kAudioObjectPropertyScopeGlobal,
-        kAudioObjectPropertyElementMain
-    };
-
     if (!rateIsSettable(dev)) {
         if (errBuf) snprintf(errBuf, errBufLen,
             "device does not allow programmatic rate changes "
@@ -115,10 +105,10 @@ static int setRateAndWait(AudioDeviceID dev, Float64 desired,
             dispatch_semaphore_signal(sem);
         };
     dispatch_queue_t q = dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0);
-    OSStatus addSt = AudioObjectAddPropertyListenerBlock(dev, &a, q, listener);
+    OSStatus addSt = AudioObjectAddPropertyListenerBlock(dev, &kNominalRate, q, listener);
 
     OSStatus setSt = AudioObjectSetPropertyData(
-        dev, &a, 0, NULL, sizeof(desired), &desired);
+        dev, &kNominalRate, 0, NULL, sizeof(desired), &desired);
 
     int rc;
     if (setSt != noErr) {
@@ -148,7 +138,7 @@ static int setRateAndWait(AudioDeviceID dev, Float64 desired,
     }
 
     if (addSt == noErr)
-        AudioObjectRemovePropertyListenerBlock(dev, &a, q, listener);
+        AudioObjectRemovePropertyListenerBlock(dev, &kNominalRate, q, listener);
 
     // This .mm builds without ARC (matching MacPermissions.mm); the
     // dispatch_semaphore_create reference must be released here or
