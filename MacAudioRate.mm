@@ -19,7 +19,6 @@
 enum {
     QSM_RETUNE_OK_NO_CHANGE         =  0,
     QSM_RETUNE_OK_CHANGED           =  1,
-    QSM_RETUNE_ERR_NOT_MACOS        = -1,
     QSM_RETUNE_ERR_DEVICE_NOT_FOUND = -2,
     QSM_RETUNE_ERR_NO_MATCHING_RATE = -3,
     QSM_RETUNE_ERR_SET_FAILED       = -4,

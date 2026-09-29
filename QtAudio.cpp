@@ -62,7 +62,7 @@ extern "C" unsigned char CurrentLevelR;
 
 #if defined(Q_OS_MACOS)
 // macOS device-rate retune wiring. The C entry lives in
-// MacAudioRate.mm; result codes mirror QSM_RETUNE_* there.
+// MacAudioRate.mm; only its two OK codes are mirrored here.
 // The two QByteArrays gate the per-device "couldn't change rate"
 // warning so it shows once per UID rather than on every audio
 // event. They live at file scope because three call sites
@@ -72,12 +72,6 @@ extern "C" int macSetDeviceNominalSampleRate(const char *uidUtf8,
 enum {
     QSM_RETUNE_OK_NO_CHANGE         =  0,
     QSM_RETUNE_OK_CHANGED           =  1,
-    QSM_RETUNE_ERR_DEVICE_NOT_FOUND = -2,
-    QSM_RETUNE_ERR_NO_MATCHING_RATE = -3,
-    QSM_RETUNE_ERR_SET_FAILED       = -4,
-    QSM_RETUNE_ERR_TIMEOUT          = -5,
-    QSM_RETUNE_ERR_QUERY_FAILED     = -6,
-    QSM_RETUNE_ERR_NOT_SETTABLE     = -7,
 };
 static QByteArray s_lastWarnedRetuneIn;
 static QByteArray s_lastWarnedRetuneOut;
@@ -570,30 +564,9 @@ static bool s_devChangeDeferred = false;
      if (lastWarnedKey == uid) return;
      lastWarnedKey = uid;
 
-     QString reason;
-     switch (rc) {
-     case QSM_RETUNE_ERR_NO_MATCHING_RATE:
-         reason = tr("none of 48, 96, 24 or 12 kHz are available "
-                     "as a nominal rate on this device"); break;
-     case QSM_RETUNE_ERR_NOT_SETTABLE:
-         reason = tr("the device's sample rate is read-only and "
-                     "cannot be changed programmatically"); break;
-     case QSM_RETUNE_ERR_SET_FAILED:
-         reason = tr("CoreAudio refused the rate change "
-                     "(another application may be holding the device)");
-         break;
-     case QSM_RETUNE_ERR_TIMEOUT:
-         reason = tr("the device acknowledged the change but did "
-                     "not commit it within 2 seconds"); break;
-     case QSM_RETUNE_ERR_DEVICE_NOT_FOUND:
-         reason = tr("the device disappeared from CoreAudio's "
-                     "device list"); break;
-     case QSM_RETUNE_ERR_QUERY_FAILED:
-         reason = tr("the device's current sample rate could not "
-                     "be read"); break;
-     default:
-         reason = tr("unexpected error code %1").arg(rc); break;
-     }
+     QString detail = QString::fromUtf8(errBuf);
+     if (detail.isEmpty())
+         detail = tr("retune failed (code %1)").arg(rc);
 
      QMessageBox::warning(this,
          tr("Could not set %1 device sample rate").arg(direction),
@@ -601,8 +574,7 @@ static bool s_devChangeDeferred = false;
             "rate. Please open Audio MIDI Setup and set this device "
             "to 48 kHz manually.\n\nDetail: %2")
              .arg(deviceInfo.description())
-             .arg(QString::fromUtf8(errBuf).isEmpty()
-                  ? reason : QString::fromUtf8(errBuf)));
+             .arg(detail));
  }
  #endif
 
