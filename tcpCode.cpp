@@ -54,9 +54,8 @@ extern serialThread *serial;
 
 #if defined(__APPLE__)
 extern "C" char * g_wavInputPath;
-extern "C" void debugDecodeWav(const char * path);
-extern "C" void debugDecodeWavNative(const char * path);
 extern "C" char * g_wavInputNativePath;
+extern "C" void debugDecodeWav(const char * path, int native);
 #endif
 
 QString Response;
@@ -953,23 +952,16 @@ void workerThread::run()
 	//	emit t->openSockets();
 
 #if defined(__APPLE__)
-	// --decode-wav harness: feed the WAV directly into ProcessNewSamples
-	// and exit when done. Bypasses MainLoop's PollQSound entirely.
-	if (g_wavInputPath != NULL)
+	// --decode-wav[-native] harness: feed the WAV directly into the
+	// modem and exit when done. Bypasses MainLoop's PollQSound entirely.
+	// --decode-wav wins if both are given.
+	if (g_wavInputPath != NULL || g_wavInputNativePath != NULL)
 	{
-		qDebug() << "Decode-wav harness: feeding" << g_wavInputPath;
-		debugDecodeWav(g_wavInputPath);
-		qDebug() << "Decode-wav harness: done, exiting";
-		Closing = 1;
-	}
-	// --decode-wav-native: same idea but raw 48 kHz to BufferFull with
-	// using48000=1, bypassing the FIR decimator. Required for RUH-mode
-	// modems whose demod is hardwired to 48 kHz.
-	else if (g_wavInputNativePath != NULL)
-	{
-		qDebug() << "Decode-wav-native harness: feeding" << g_wavInputNativePath;
-		debugDecodeWavNative(g_wavInputNativePath);
-		qDebug() << "Decode-wav-native harness: done, exiting";
+		const int native = g_wavInputPath == NULL;
+		const char * tag = native ? "Decode-wav-native harness:" : "Decode-wav harness:";
+		qDebug() << tag << "feeding" << (native ? g_wavInputNativePath : g_wavInputPath);
+		debugDecodeWav(native ? g_wavInputNativePath : g_wavInputPath, native);
+		qDebug() << tag << "done, exiting";
 		Closing = 1;
 	}
 #endif
