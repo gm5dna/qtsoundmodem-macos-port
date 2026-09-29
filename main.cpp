@@ -47,7 +47,6 @@ extern "C" int nonGUIMode;
 // audio path; non-NULL means the wav harness will run after worker
 // init and the process will exit when the wav is exhausted.
 extern "C" { char * g_wavInputPath = NULL; }
-extern "C" void debugDecodeWav(const char * path);
 
 // Set by --decode-wav-native <path>. Like --decode-wav but feeds 48 kHz
 // raw samples to BufferFull with using48000=1, bypassing the FIR
@@ -58,7 +57,6 @@ extern "C" void debugDecodeWav(const char * path);
 // downsamples internally (naive 4-sample-skip; less clean than the
 // FIR path but adequate for the clean direwolf test signals).
 extern "C" { char * g_wavInputNativePath = NULL; }
-extern "C" void debugDecodeWavNative(const char * path);
 
 // Set by --dump-input <path>. When non-NULL, PollQSound additionally
 // writes its captured samples to this WAV file (12 kHz stereo Int16).
