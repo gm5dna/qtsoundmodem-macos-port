@@ -196,7 +196,7 @@ if(APPLE)
 
     # Copy the .icns into Contents/Resources/ as a POST_BUILD step
     # before macdeployqt runs (CMake runs POST_BUILD commands in
-    # declaration order, and macdeployqt.cmake is included below).
+    # declaration order, and macdeployqt.cmake is included further down).
     # Using MACOSX_PACKAGE_LOCATION via set_source_files_properties
     # copies AFTER POST_BUILD, which leaves the icon outside the
     # final ad-hoc seal and breaks `codesign --verify`.
@@ -209,8 +209,6 @@ if(APPLE)
         COMMENT "Copying QtSoundModem.icns into bundle Resources"
         VERBATIM
     )
-
-    include("${CMAKE_SOURCE_DIR}/cmake/macdeployqt.cmake")
 endif()
 
 target_link_libraries(QtSoundModem PRIVATE
@@ -280,6 +278,10 @@ if(APPLE)
         "${COREFOUNDATION_FRAMEWORK}"
         "${COREAUDIO_FRAMEWORK}"
         "${FOUNDATION_FRAMEWORK}")
+
+    # After the icon copy above (POST_BUILD runs in declaration order)
+    # and after HIDAPI_LIBRARY is found.
+    include("${CMAKE_SOURCE_DIR}/cmake/macdeployqt.cmake")
 endif()
 
 # Diagnostics. Off by default; CI turns QSM_WARNINGS on in a non-fatal
