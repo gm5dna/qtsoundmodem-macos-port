@@ -93,19 +93,6 @@ static Boolean deviceSupportsRate(AudioDeviceID dev, Float64 rate) {
     return found;
 }
 
-static Boolean isAggregateDevice(AudioDeviceID dev) {
-    AudioObjectPropertyAddress a = {
-        kAudioObjectPropertyClass,
-        kAudioObjectPropertyScopeGlobal,
-        kAudioObjectPropertyElementMain
-    };
-    UInt32 cls = 0;
-    UInt32 sz = sizeof(cls);
-    if (AudioObjectGetPropertyData(dev, &a, 0, NULL, &sz, &cls) != noErr)
-        return false;
-    return cls == kAudioAggregateDeviceClassID;
-}
-
 static int setRateAndWait(AudioDeviceID dev, Float64 desired,
                           char *errBuf, int errBufLen) {
     AudioObjectPropertyAddress a = {
@@ -187,12 +174,6 @@ extern "C" int macSetDeviceNominalSampleRate(
         if (errBuf) snprintf(errBuf, errBufLen,
             "device with UID '%s' not found in CoreAudio", uidUtf8);
         return QSM_RETUNE_ERR_DEVICE_NOT_FOUND;
-    }
-
-    if (isAggregateDevice(dev)) {
-        fprintf(stderr,
-            "[QtSM] note: device UID '%s' is an aggregate; "
-            "rate change applies to all member devices.\n", uidUtf8);
     }
 
     Float64 cur = 0.0;
