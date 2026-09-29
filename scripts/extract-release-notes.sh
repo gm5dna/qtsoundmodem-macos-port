@@ -26,34 +26,20 @@ if [[ ! -f "$changelog" ]]; then
     exit 2
 fi
 
+# Print the lines under "## [<heading>]" up to the next "## [" heading or
+# "[x]: url" link reference, minus leading and trailing blank lines.
 extract_section() {
-    local heading="$1"
-    # Escape regex metacharacters (dots are the common case in semver tags).
-    local escaped
-    escaped="$(printf '%s' "$heading" | sed 's/[.[\*^$]/\\&/g')"
-    awk -v h="$escaped" '
-        $0 ~ "^## \\[" h "\\]" { in_section = 1; next }
-        in_section && /^## \[/  { exit }
-        in_section && /^\[.*\]:/ { exit }
-        in_section               { print }
+    awk -v h="## [$1]" '
+        !in_section { in_section = index($0, h) == 1; next }
+        /^## \[/ || /^\[.*\]:/ { exit }
+        NF { started = 1 }
+        started { buf[++n] = $0; if (NF) last = n }
+        END { for (i = 1; i <= last; i++) print buf[i] }
     ' "$changelog"
 }
 
-trim_blank_edges() {
-    awk '
-        NF { if (!started) started = 1; buffer[++n] = $0; next }
-        started { buffer[++n] = $0 }
-        END {
-            # Find last non-blank line
-            last = n
-            while (last > 0 && buffer[last] !~ /[^[:space:]]/) last--
-            for (i = 1; i <= last; i++) print buffer[i]
-        }
-    '
-}
-
 if [[ "$version" == *"-rc"* ]]; then
-    body="$(extract_section "Unreleased" | trim_blank_edges)"
+    body="$(extract_section "Unreleased")"
     if [[ -z "$body" ]]; then
         body="(no changes recorded in [Unreleased])"
     fi
@@ -61,7 +47,7 @@ if [[ "$version" == *"-rc"* ]]; then
     exit 0
 fi
 
-body="$(extract_section "$version" | trim_blank_edges)"
+body="$(extract_section "$version")"
 if [[ -z "$body" ]]; then
     echo "no CHANGELOG section for version: $version" >&2
     exit 1
