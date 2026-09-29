@@ -53,7 +53,6 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 #include <QUrl>
 #include <QMutex>
 #include <QStyleHints>
-#include <atomic>
 #include <QWhatsThis>
 
 #include "UZ7HOStuff.h"
