@@ -262,12 +262,10 @@ void COMClearRTS(int fd)
 int OpenCOMPort(char * Port, int speed, BOOL SetDTR, BOOL SetRTS, BOOL Quiet, int Stopbits)
 {
 	int fd;
-	u_long param = 1;
 	struct termios term;
 	int i;
 	speed_t termios_speed = B0;
 	char fulldev[80];
-	char buf[256];
 
 	(void)Stopbits;
 
@@ -278,8 +276,7 @@ int OpenCOMPort(char * Port, int speed, BOOL SetDTR, BOOL SetRTS, BOOL Quiet, in
 		if (Quiet == 0)
 		{
 			perror("Com Open Failed");
-			snprintf(buf, sizeof(buf), " %s could not be opened", fulldev);
-			Debugprintf("%s", buf);
+			Debugprintf(" %s could not be opened", fulldev);
 		}
 		return 0;
 	}
@@ -316,8 +313,6 @@ int OpenCOMPort(char * Port, int speed, BOOL SetDTR, BOOL SetRTS, BOOL Quiet, in
 		close(fd);
 		return 0;
 	}
-
-	ioctl(fd, FIONBIO, &param);
 
 	Debugprintf("Port %s fd %d", fulldev, fd);
 
@@ -428,8 +423,6 @@ struct timespec pttclk;
 // SoundMode is forced to 5).
 
 extern unsigned short * sendSamplestoQSound(unsigned short * buf, int n);
-extern void QtSoundInit(void);
-extern void closeQSound(void);
 extern unsigned short * DMABuffer;
 extern unsigned short QtDMABuffer[8192];
 extern int Number;
@@ -440,12 +433,8 @@ extern int pttOnTime(void);
 
 short * SendtoCard(short * buf, int n)
 {
-	if (SoundMode == 5)
-	{
+	if (SoundMode == 5)	// other SoundModes are not built on macOS
 		sendSamplestoQSound((unsigned short *)buf, n);
-		return buf;
-	}
-	// Other SoundModes are not built on macOS.
 	return buf;
 }
 
@@ -611,7 +600,6 @@ extern void ProcessNewSamples(short * Samples, int nSamples);
 extern void decimateAudioToModem(const short * src, int decim, short * dst);
 extern void aaFilterInit(int sampleRateIn);
 extern void BufferFull(short * Samples, int nSamples);
-extern int using48000;
 
 // Walks the RIFF chunk list rather than assuming a 44-byte canonical
 // header so files produced by ffmpeg / sox with metadata LIST chunks

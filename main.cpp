@@ -31,10 +31,8 @@ along with QtSoundModem.  If not, see http://www.gnu.org/licenses
 #include <QDebug>
 #include <QSettings>
 
-#if defined(Q_OS_MACOS)
 extern "C" int macSetDeviceNominalSampleRate(const char *uidUtf8,
     double *outChosenRate, char *errBuf, int errBufLen);
-#endif
 #include <errno.h>
 #include <limits.h>
 #include <string.h>
