@@ -49,160 +49,61 @@ add_custom_command(TARGET QtSoundModem POST_BUILD
     VERBATIM
 )
 
-# macdeployqt only handles Qt frameworks. The build also depends on
-# Homebrew's fftw3f, which would otherwise leave the bundle linked to
-# /opt/homebrew/opt/fftw/... and break the moment the .app is moved off
-# this machine (or Homebrew is upgraded). Embed the real dylib into
-# Contents/Frameworks/ and rewrite the executable's load command to
-# point at @rpath. macdeployqt has already set the rpath to
-# @executable_path/../Frameworks for Qt, which we reuse.
-get_filename_component(FFTW3F_REAL "${FFTW3F_LIBRARY}" REALPATH)
-get_filename_component(FFTW3F_NAME "${FFTW3F_REAL}" NAME)
-
-# Use @executable_path/../Frameworks/<name> directly in the install_name
-# instead of @rpath/<name>. This matches how macdeployqt rewrites the
-# Qt framework load commands, removes any dependency on LC_RPATH order,
-# and guarantees the bundle loads its own libfftw3f / libhidapi even on
-# a recipient machine that has Homebrew copies installed.
-add_custom_command(TARGET QtSoundModem POST_BUILD
-    COMMAND "${CMAKE_COMMAND}" -E make_directory
-            "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Frameworks"
-    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-            "${FFTW3F_REAL}"
-            "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Frameworks/${FFTW3F_NAME}"
-    COMMAND chmod u+w
-            "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Frameworks/${FFTW3F_NAME}"
-    COMMAND install_name_tool -id
-            "@executable_path/../Frameworks/${FFTW3F_NAME}"
-            "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Frameworks/${FFTW3F_NAME}"
-    # Do not sign here: install_name_tool changes are not complete until
-    # every embedded dependency and executable load command has been
-    # rewritten. The final post-build step signs everything in dependency
-    # order with xattr cleanup before each codesign invocation.
-    COMMAND /bin/bash -c
-            "exe='$<TARGET_FILE:QtSoundModem>'; \
-             for dep in $(otool -L \"$exe\" | awk 'NR>1 {print $1}' | grep '/libfftw3f'); do \
-                 install_name_tool -change \"$dep\" '@executable_path/../Frameworks/${FFTW3F_NAME}' \"$exe\"; \
-             done"
-    COMMENT "Embedding ${FFTW3F_NAME} into QtSoundModem.app/Contents/Frameworks"
-    VERBATIM
-)
-
-# Same treatment for libhidapi (commit 6 added the dependency for
-# CM108 PTT). Without this the bundle dyld-fails the moment it lands
-# on a Mac without /opt/homebrew/opt/hidapi/. macdeployqt.cmake is
-# included before the APPLE link block in CMakeLists.txt populates
-# HIDAPI_LIBRARY, so we re-find here to avoid first-configure misses.
-find_library(HIDAPI_LIBRARY NAMES hidapi
-    HINTS
-        /opt/homebrew/lib
-        /opt/homebrew/opt/hidapi/lib
-        /usr/local/lib
-        /usr/local/opt/hidapi/lib)
-if(HIDAPI_LIBRARY)
-    get_filename_component(HIDAPI_REAL "${HIDAPI_LIBRARY}" REALPATH)
-    get_filename_component(HIDAPI_NAME "${HIDAPI_REAL}" NAME)
-
+# macdeployqt only handles Qt frameworks and is not guaranteed to pull in
+# Homebrew's fftw3f and hidapi, which would leave the bundle linked to
+# /opt/homebrew/... Embed the real dylibs into Contents/Frameworks/ and
+# point the executable's load commands at @executable_path/../Frameworks
+# (as macdeployqt does for Qt), so the bundle always loads its own copies.
+# Signing happens in the final step, after every install_name_tool edit.
+foreach(lib IN ITEMS FFTW3F HIDAPI)
+    get_filename_component(real "${${lib}_LIBRARY}" REALPATH)
+    get_filename_component(name "${real}" NAME)
+    string(REGEX REPLACE "\\..*" "" stem "${name}")
+    set(dest "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Frameworks/${name}")
     add_custom_command(TARGET QtSoundModem POST_BUILD
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-                "${HIDAPI_REAL}"
-                "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Frameworks/${HIDAPI_NAME}"
-        COMMAND chmod u+w
-                "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Frameworks/${HIDAPI_NAME}"
-        COMMAND install_name_tool -id
-                "@executable_path/../Frameworks/${HIDAPI_NAME}"
-                "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Frameworks/${HIDAPI_NAME}"
-        # Signing is centralized in the final post-build step after all
-        # install_name_tool edits have completed.
+        COMMAND "${CMAKE_COMMAND}" -E make_directory
+                "$<TARGET_BUNDLE_CONTENT_DIR:QtSoundModem>/Frameworks"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${real}" "${dest}"
+        COMMAND chmod u+w "${dest}"
+        COMMAND install_name_tool -id "@executable_path/../Frameworks/${name}" "${dest}"
         COMMAND /bin/bash -c
                 "exe='$<TARGET_FILE:QtSoundModem>'; \
-                 for dep in $(otool -L \"$exe\" | awk 'NR>1 {print $1}' | grep -E '/libhidapi'); do \
-                     install_name_tool -change \"$dep\" '@executable_path/../Frameworks/${HIDAPI_NAME}' \"$exe\"; \
+                 for dep in $(otool -L \"$exe\" | awk 'NR>1 {print $1}' | grep '/${stem}'); do \
+                     install_name_tool -change \"$dep\" '@executable_path/../Frameworks/${name}' \"$exe\"; \
                  done"
-        COMMENT "Embedding ${HIDAPI_NAME} into QtSoundModem.app/Contents/Frameworks"
+        COMMENT "Embedding ${name} into QtSoundModem.app/Contents/Frameworks"
         VERBATIM
     )
-endif()
+endforeach()
 
-# Final ad-hoc signing pass. install_name_tool invalidates existing
-# signatures and dyld will refuse modified binaries with stale ones, so
-# this MUST be the last POST_BUILD step.
+# Final ad-hoc signing pass. install_name_tool invalidates signatures,
+# so this MUST be the last POST_BUILD step.
 #
-# Strategy:
-#   1. Scrub the bundle once via ditto --norsrc --noextattr --noacl to
-#      remove any com.apple.FinderInfo / fileprovider metadata that
-#      build/copy steps have left on package roots. Codesign rejects
-#      FinderInfo ("detritus not allowed"); com.apple.provenance is
-#      kernel-protected and codesign tolerates it.
-#   2. Sign nested code in dependency order: dylibs and frameworks in
-#      Frameworks/, then everything in PlugIns/.
-#   3. Codesign the .app bundle as a whole, in TMPDIR. Building under
-#      ~/Documents puts the .app inside macOS's file provider, which
-#      re-stamps com.apple.FinderInfo and com.apple.fileprovider.fpfs#P
-#      on package roots (.app, .framework) faster than `xattr -c` can
-#      clear them. Bundle-level codesign then dies with "detritus not
-#      allowed". TMPDIR (/var/folders/...) is outside file-provider
-#      control. We ditto the bundle there, sign, then ditto back. The
-#      signature is sealed inside Contents/_CodeSignature/CodeResources,
-#      so any FinderInfo stamped onto the in-place .app afterwards does
-#      not invalidate it. Without this final step the .app validates as
-#      "code has no resources but signature indicates they must be
-#      present".
+# All signing happens on a copy in TMPDIR. Under ~/Documents the file
+# provider re-stamps com.apple.FinderInfo on package roots (.app,
+# .framework) faster than it can be cleared, and codesign rejects it
+# ("detritus not allowed"). ditto --noextattr strips xattrs on the way
+# out and back; the seal lives in _CodeSignature, so FinderInfo stamped
+# on the in-place bundle afterwards does not invalidate it.
 add_custom_command(TARGET QtSoundModem POST_BUILD
     COMMAND /bin/bash -c
             "set -euo pipefail; \
              bundle='$<TARGET_BUNDLE_DIR:QtSoundModem>'; \
-             exe='$<TARGET_FILE:QtSoundModem>'; \
-             clean_xattrs() { \
-                 if [ -d \"$1\" ]; then \
-                     find \"$1\" -exec xattr -c {} \\; 2>/dev/null || true; \
-                 else \
-                     xattr -c \"$1\" 2>/dev/null || true; \
-                 fi; \
-             }; \
-             scrub_package_roots() { \
-                 tmp_parent=$(mktemp -d \"$bundle.resign.XXXXXX\"); \
-                 tmp_bundle=\"$tmp_parent/$(basename \"$bundle\")\"; \
-                 exe_backup=\"$tmp_parent/$(basename \"$exe\").backup\"; \
-                 if [ -f \"$exe\" ]; then \
-                     ditto --norsrc --noextattr --noacl \"$exe\" \"$exe_backup\"; \
-                 fi; \
-                 ditto --norsrc --noextattr --noacl \"$bundle\" \"$tmp_bundle\"; \
-                 rm -rf \"$bundle\"; \
-                 mv \"$tmp_bundle\" \"$bundle\"; \
-                 if [ -f \"$exe_backup\" ]; then \
-                     mkdir -p \"$(dirname \"$exe\")\"; \
-                     ditto --norsrc --noextattr --noacl \"$exe_backup\" \"$exe\"; \
-                     chmod u+x \"$exe\"; \
-                     rm -f \"$exe_backup\"; \
-                 fi; \
-                 rmdir \"$tmp_parent\"; \
-             }; \
-             sign_code() { \
-                 clean_xattrs \"$1\"; \
-                 codesign --force --sign - --timestamp=none \"$1\"; \
-             }; \
-             scrub_package_roots; \
              rm -rf \"$bundle/Contents/_CodeSignature\"; \
-             for f in \"$bundle\"/Contents/Frameworks/*.dylib; do \
-                 [ -e \"$f\" ] || continue; \
-                 sign_code \"$f\"; \
-             done; \
-             for f in \"$bundle\"/Contents/Frameworks/*.framework; do \
-                 [ -e \"$f\" ] || continue; \
-                 sign_code \"$f\"; \
-             done; \
-             if [ -d \"$bundle/Contents/PlugIns\" ]; then \
-                 find \"$bundle/Contents/PlugIns\" -name '*.dylib' -print0 | \
-                     while IFS= read -r -d '' f; do sign_code \"$f\"; done; \
-             fi; \
              sign_dir=$(mktemp -d -t qtsm-bundle-sign); \
-             sign_path=\"$sign_dir/$(basename \"$bundle\")\"; \
-             ditto --norsrc --noextattr --noacl \"$bundle\" \"$sign_path\"; \
-             codesign --force --sign - --timestamp=none \"$sign_path\"; \
+             trap 'rm -rf \"$sign_dir\"' EXIT; \
+             app=\"$sign_dir/$(basename \"$bundle\")\"; \
+             ditto --norsrc --noextattr --noacl \"$bundle\" \"$app\"; \
+             sign() { codesign --force --sign - --timestamp=none \"$@\"; }; \
+             for f in \"$app\"/Contents/Frameworks/*.dylib \"$app\"/Contents/Frameworks/*.framework; do \
+                 [ -e \"$f\" ] || continue; sign \"$f\"; \
+             done; \
+             if [ -d \"$app/Contents/PlugIns\" ]; then \
+                 find \"$app/Contents/PlugIns\" -name '*.dylib' -exec codesign --force --sign - --timestamp=none {} +; \
+             fi; \
+             sign \"$app\"; \
              rm -rf \"$bundle\"; \
-             ditto --norsrc --noextattr --noacl \"$sign_path\" \"$bundle\"; \
-             rm -rf \"$sign_dir\"; \
+             ditto --norsrc --noextattr --noacl \"$app\" \"$bundle\"; \
              codesign --verify --verbose=2 \"$bundle\""
     COMMENT "Signing QtSoundModem.app ad-hoc after macdeployqt and install_name_tool"
     VERBATIM
