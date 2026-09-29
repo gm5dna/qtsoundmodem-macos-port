@@ -262,12 +262,10 @@ void COMClearRTS(int fd)
 int OpenCOMPort(char * Port, int speed, BOOL SetDTR, BOOL SetRTS, BOOL Quiet, int Stopbits)
 {
 	int fd;
-	u_long param = 1;
 	struct termios term;
 	int i;
 	speed_t termios_speed = B0;
 	char fulldev[80];
-	char buf[256];
 
 	(void)Stopbits;
 
@@ -278,8 +276,7 @@ int OpenCOMPort(char * Port, int speed, BOOL SetDTR, BOOL SetRTS, BOOL Quiet, in
 		if (Quiet == 0)
 		{
 			perror("Com Open Failed");
-			snprintf(buf, sizeof(buf), " %s could not be opened", fulldev);
-			Debugprintf("%s", buf);
+			Debugprintf(" %s could not be opened", fulldev);
 		}
 		return 0;
 	}
@@ -316,8 +313,6 @@ int OpenCOMPort(char * Port, int speed, BOOL SetDTR, BOOL SetRTS, BOOL Quiet, in
 		close(fd);
 		return 0;
 	}
-
-	ioctl(fd, FIONBIO, &param);
 
 	Debugprintf("Port %s fd %d", fulldev, fd);
 
@@ -428,8 +423,6 @@ struct timespec pttclk;
 // SoundMode is forced to 5).
 
 extern unsigned short * sendSamplestoQSound(unsigned short * buf, int n);
-extern void QtSoundInit(void);
-extern void closeQSound(void);
 extern unsigned short * DMABuffer;
 extern unsigned short QtDMABuffer[8192];
 extern int Number;
@@ -440,12 +433,8 @@ extern int pttOnTime(void);
 
 short * SendtoCard(short * buf, int n)
 {
-	if (SoundMode == 5)
-	{
+	if (SoundMode == 5)	// other SoundModes are not built on macOS
 		sendSamplestoQSound((unsigned short *)buf, n);
-		return buf;
-	}
-	// Other SoundModes are not built on macOS.
 	return buf;
 }
 
@@ -595,46 +584,45 @@ int InitSound(BOOL Report)
 	return FALSE;
 }
 
-// --decode-wav harness: read a PCM 16-bit WAV (mono or stereo, any
-// sample rate that's an integer multiple of 12 kHz from 12 kHz to
-// 96 kHz) and feed it through the same decimator that the live audio
-// path (PollQSound) uses, then into the modem. Bypasses Qt audio
-// entirely — deterministic regression-test rig for both the boxcar
-// (today) and the windowed-sinc FIR (next commit).
+// --decode-wav / --decode-wav-native harnesses: feed a PCM 16-bit WAV
+// (mono or stereo) straight into the modem, bypassing Qt audio
+// entirely — a deterministic regression-test rig.
 //
-// Walks the RIFF chunk list rather than assuming a 44-byte canonical
-// header so files produced by ffmpeg / sox with metadata LIST chunks
-// or extended fmt chunks parse without manual stripping.
+//   native == 0 (--decode-wav): any rate that's an integer multiple of
+//     12 kHz from 12 kHz to 96 kHz, through the same FIR decimator the
+//     live audio path (PollQSound) uses, then into ProcessNewSamples.
+//   native == 1 (--decode-wav-native): 48 kHz only, raw to BufferFull
+//     with using48000=1. Bypasses decimateAudioToModem, giving the
+//     RUH/dw9600 demod the 48 kHz native baseband it hardcodes. AFSK
+//     modems still work because BufferFull's runModems path
+//     downsamples internally.
 extern void ProcessNewSamples(short * Samples, int nSamples);
 extern void decimateAudioToModem(const short * src, int decim, short * dst);
 extern void aaFilterInit(int sampleRateIn);
 extern void BufferFull(short * Samples, int nSamples);
-extern int using48000;
 
-void debugDecodeWav(const char * path)
+// Walks the RIFF chunk list rather than assuming a 44-byte canonical
+// header so files produced by ffmpeg / sox with metadata LIST chunks
+// or extended fmt chunks parse without manual stripping.
+//
+// Returns 1 on success with the out-params populated and f positioned
+// at the start of the data chunk, 0 on any parse error (already logged
+// via Debugprintf).
+static int parseWavHeader(FILE * f, const char * path,
+	short * outNumCh, int * outSampleRate, short * outBits,
+	long * outDataStart, int * outDataChunkSize)
 {
-	FILE * f = fopen(path, "rb");
-	if (!f)
-	{
-		Debugprintf("debugDecodeWav: open %s failed: %s",
-			path, strerror(errno));
-		return;
-	}
-
 	unsigned char riff[12];
 	if (fread(riff, 1, 12, f) != 12 ||
 		memcmp(riff, "RIFF", 4) != 0 ||
 		memcmp(riff + 8, "WAVE", 4) != 0)
 	{
-		Debugprintf("debugDecodeWav: not a RIFF/WAVE file");
-		fclose(f);
-		return;
+		Debugprintf("parseWavHeader: not a RIFF/WAVE file: %s", path);
+		return 0;
 	}
 
-	short numCh = 0;
+	short numCh = 0, bits = 0, formatTag = 0;
 	int sampleRate = 0;
-	short bits = 0;
-	short formatTag = 0;
 	int dataChunkSize = 0;
 	long dataStart = -1;
 
@@ -650,8 +638,7 @@ void debugDecodeWav(const char * path)
 		int chunkSize = ch[4] | (ch[5] << 8) | (ch[6] << 16) | (ch[7] << 24);
 		if (chunkSize < 0)
 		{
-			Debugprintf("debugDecodeWav: malformed chunk size %d in %s, aborting walk",
-				chunkSize, path);
+			Debugprintf("parseWavHeader: malformed chunk size %d in %s", chunkSize, path);
 			break;
 		}
 
@@ -676,193 +663,6 @@ void debugDecodeWav(const char * path)
 		}
 		else
 		{
-			// Skip this chunk (LIST / JUNK / id3 / etc).
-			if (fseek(f, chunkSize, SEEK_CUR) != 0) break;
-		}
-	}
-
-	if (dataStart < 0 || numCh == 0 || sampleRate == 0 || bits == 0)
-	{
-		Debugprintf("debugDecodeWav: failed to parse fmt + data chunks "
-			"from %s (numCh=%d, rate=%d, bits=%d, dataStart=%ld)",
-			path, numCh, sampleRate, bits, dataStart);
-		fclose(f);
-		return;
-	}
-
-	Debugprintf("debugDecodeWav: %s — %d ch, %d Hz, %d-bit, fmtTag=0x%04x, %d data bytes",
-		path, numCh, sampleRate, bits, (unsigned short)formatTag, dataChunkSize);
-
-	// WAVE_FORMAT_PCM is 0x0001. Anything else (float 0x0003, A-law
-	// 0x0006, EXTENSIBLE 0xFFFE, …) would feed garbage to the
-	// decimator if we just trusted bits==16. Refuse loudly instead.
-	if (formatTag != 0x0001)
-	{
-		Debugprintf("debugDecodeWav: format tag 0x%04x is not PCM (0x0001); refusing. "
-			"Pre-convert with: ffmpeg -i in.* -c:a pcm_s16le out.wav",
-			(unsigned short)formatTag);
-		fclose(f);
-		return;
-	}
-
-	if (bits != 16 || (numCh != 1 && numCh != 2))
-	{
-		Debugprintf("debugDecodeWav: expected 16-bit PCM / 1 or 2 ch. "
-			"Pre-convert with: ffmpeg -i in.* -c:a pcm_s16le out.wav");
-		fclose(f);
-		return;
-	}
-
-	int decim = 1;
-	if (sampleRate < 12000)
-	{
-		Debugprintf("debugDecodeWav: sample rate %d Hz < 12000 Hz; "
-			"upsampling not supported, aborting", sampleRate);
-		fclose(f);
-		return;
-	}
-	decim = sampleRate / 12000;
-	if (decim > 8)
-	{
-		Debugprintf("debugDecodeWav: decim factor %d (sample rate %d Hz) "
-			"exceeds reasonable range; aborting", decim, sampleRate);
-		fclose(f);
-		return;
-	}
-	if (sampleRate % 12000 != 0)
-	{
-		Debugprintf("debugDecodeWav: WARNING %d Hz is not an integer "
-			"multiple of 12000 Hz; truncating to decim=%d (output rate "
-			"%d Hz, drift %.2f%%). Pre-resample for clean tests.",
-			sampleRate, decim, sampleRate / decim,
-			100.0 * (1.0 - 12000.0 * decim / sampleRate));
-	}
-
-	// Design the antialias FIR for this file's rate. The same helper
-	// runs from initializeAudioIn for live audio; designing twice with
-	// the same rate is a cheap no-op.
-	aaFilterInit(sampleRate);
-
-	// Force one BPF/TXBPF coefficient computation per channel before
-	// the first sample lands in BufferFull. Normally the GUI paths
-	// (RX-frequency change handlers, mode-change reload) set these
-	// flags during construction; in headless --decode-wav mode no
-	// GUI runs so pnt_change stays FALSE and the modem code skips
-	// the make_core_BPF call, leaving zero filter coefficients and
-	// silently failing every decode. Mirror the GUI's "set all four
-	// flags TRUE on init" behaviour here.
-	extern int pnt_change[5];
-	for (int i = 0; i < 4; i++) pnt_change[i] = 1;
-
-	// Mirror the constructor: an enabled RUH modem sets using48000 in
-	// the live app whatever the device rate, so a non-48 kHz device
-	// takes this FIR path with using48000 = 1. Leaving it 0 here hid
-	// that combination from the regression.
-	using48000 = 0;
-	for (int i = 0; i < 4; i++)
-		if (soundChannel[i] && (speed[i] == SPEED_RUH48 || speed[i] == SPEED_RUH96))
-			using48000 = 1;
-
-	// Process in 512-output-frame chunks (matches PollQSound).
-	const int inFramesPerChunk = 512 * decim;
-	// Stack buffers sized for decim up to 8 (96 kHz → 12 kHz).
-	short stereoIn[2 * 512 * 8];
-	short monoBuf[512 * 8];
-	short decimated[1024];
-	int totalInFrames = 0;
-	// Stop at the end of the data chunk, not EOF: trailing LIST/id3
-	// chunks are not audio. A zero size (e.g. an unfinalised dump) means
-	// read to EOF.
-	long framesLeft = dataChunkSize > 0 ? dataChunkSize / (2 * numCh) : LONG_MAX;
-
-	while (1)
-	{
-		if (framesLeft < inFramesPerChunk) break;
-		framesLeft -= inFramesPerChunk;
-		if (numCh == 1)
-		{
-			size_t n = fread(monoBuf, sizeof(short), inFramesPerChunk, f);
-			if ((int)n < inFramesPerChunk) break;  // ignore short tail
-			for (int i = 0; i < inFramesPerChunk; i++)
-			{
-				stereoIn[2 * i]     = monoBuf[i];
-				stereoIn[2 * i + 1] = monoBuf[i];
-			}
-		}
-		else
-		{
-			size_t n = fread(stereoIn, sizeof(short) * 2, inFramesPerChunk, f);
-			if ((int)n < inFramesPerChunk) break;  // ignore short tail (mono branch above too)
-		}
-
-		decimateAudioToModem(stereoIn, decim, decimated);
-		ProcessNewSamples(decimated, 512);
-		totalInFrames += inFramesPerChunk;
-	}
-
-	fclose(f);
-	Debugprintf("debugDecodeWav: processed %d input frames (%.2f s at %d Hz)",
-		totalInFrames, (double)totalInFrames / sampleRate, sampleRate);
-}
-
-// PCM-WAV chunk-walker factored out for reuse by the new native-rate
-// harness below. The original debugDecodeWav above retains its own
-// inline parser unchanged so its existing baseline behaviour is
-// byte-for-byte preserved (same diagnostic messages, same error
-// strings). Future cleanup could port debugDecodeWav to this helper
-// too, but that's out of scope for the Plan-A commit.
-//
-// Returns 1 on success with the out-params populated, 0 on any parse
-// error (already logged via Debugprintf). Caller fseek()s to dataStart
-// and reads samples.
-static int parseWavHeader(FILE * f, const char * path,
-	short * outNumCh, int * outSampleRate, short * outBits,
-	long * outDataStart, int * outDataChunkSize)
-{
-	unsigned char riff[12];
-	if (fread(riff, 1, 12, f) != 12 ||
-		memcmp(riff, "RIFF", 4) != 0 ||
-		memcmp(riff + 8, "WAVE", 4) != 0)
-	{
-		Debugprintf("parseWavHeader: not a RIFF/WAVE file: %s", path);
-		return 0;
-	}
-
-	short numCh = 0, bits = 0, formatTag = 0;
-	int sampleRate = 0;
-	int dataChunkSize = 0;
-	long dataStart = -1;
-
-	while (1)
-	{
-		unsigned char ch[8];
-		if (fread(ch, 1, 8, f) != 8) break;
-		int chunkSize = ch[4] | (ch[5] << 8) | (ch[6] << 16) | (ch[7] << 24);
-		if (chunkSize < 0)
-		{
-			Debugprintf("parseWavHeader: malformed chunk size %d in %s", chunkSize, path);
-			break;
-		}
-
-		if (memcmp(ch, "fmt ", 4) == 0)
-		{
-			unsigned char fmt[40] = {0};
-			int n = chunkSize > (int)sizeof(fmt) ? (int)sizeof(fmt) : chunkSize;
-			if (fread(fmt, 1, n, f) != (size_t)n) break;
-			if (n < chunkSize) fseek(f, chunkSize - n, SEEK_CUR);
-			formatTag = (short)(fmt[0] | (fmt[1] << 8));
-			numCh = (short)(fmt[2] | (fmt[3] << 8));
-			sampleRate = fmt[4] | (fmt[5] << 8) | (fmt[6] << 16) | (fmt[7] << 24);
-			bits = (short)(fmt[14] | (fmt[15] << 8));
-		}
-		else if (memcmp(ch, "data", 4) == 0)
-		{
-			dataStart = ftell(f);
-			dataChunkSize = chunkSize;
-			break;
-		}
-		else
-		{
 			if (fseek(f, chunkSize, SEEK_CUR) != 0) break;
 		}
 	}
@@ -873,9 +673,12 @@ static int parseWavHeader(FILE * f, const char * path,
 			"(numCh=%d, rate=%d, bits=%d)", path, numCh, sampleRate, bits);
 		return 0;
 	}
+	// WAVE_FORMAT_PCM is 0x0001. Anything else (float 0x0003, A-law
+	// 0x0006, EXTENSIBLE 0xFFFE, …) would feed garbage to the modem.
 	if (formatTag != 0x0001)
 	{
-		Debugprintf("parseWavHeader: format tag 0x%04x is not PCM (0x0001) in %s",
+		Debugprintf("parseWavHeader: format tag 0x%04x is not PCM (0x0001) in %s; refusing. "
+			"Pre-convert with: ffmpeg -i in.* -c:a pcm_s16le out.wav",
 			(unsigned short)formatTag, path);
 		return 0;
 	}
@@ -888,24 +691,13 @@ static int parseWavHeader(FILE * f, const char * path,
 	return 1;
 }
 
-// --decode-wav-native harness: read a 48 kHz 16-bit PCM WAV (mono or
-// stereo) and feed it raw to BufferFull with using48000=1 set. This
-// bypasses decimateAudioToModem (and therefore the FIR antialias),
-// giving the RUH/dw9600 demod the 48 kHz native baseband it expects.
-// AFSK modems still work because BufferFull's runModems path
-// downsamples internally — naive 4-sample-skip without antialias,
-// adequate for clean direwolf test signals but not as good as the
-// FIR-path --decode-wav for live off-air recordings.
-//
-// 48 kHz only — that's what the RUH demod hardcodes and the only
-// rate that benefits from this mode.
-void debugDecodeWavNative(const char * path)
+void debugDecodeWav(const char * path, int native)
 {
+	const char * who = native ? "debugDecodeWavNative" : "debugDecodeWav";
 	FILE * f = fopen(path, "rb");
 	if (!f)
 	{
-		Debugprintf("debugDecodeWavNative: open %s failed: %s",
-			path, strerror(errno));
+		Debugprintf("%s: open %s failed: %s", who, path, strerror(errno));
 		return;
 	}
 
@@ -921,78 +713,119 @@ void debugDecodeWavNative(const char * path)
 		return;
 	}
 
-	Debugprintf("debugDecodeWavNative: %s — %d ch, %d Hz, %d-bit, %d data bytes",
-		path, numCh, sampleRate, bits, dataChunkSize);
+	Debugprintf("%s: %s — %d ch, %d Hz, %d-bit, %d data bytes",
+		who, path, numCh, sampleRate, bits, dataChunkSize);
 
-	if (sampleRate != 48000 || bits != 16 || (numCh != 1 && numCh != 2))
+	int decim = 1;
+	if (native)
 	{
-		Debugprintf("debugDecodeWavNative: requires 48000 Hz / 16-bit / 1 or 2 ch. "
-			"Pre-convert with: ffmpeg -i in.* -ar 48000 -c:a pcm_s16le out.wav");
-		fclose(f);
-		return;
+		if (sampleRate != 48000 || bits != 16 || (numCh != 1 && numCh != 2))
+		{
+			Debugprintf("debugDecodeWavNative: requires 48000 Hz / 16-bit / 1 or 2 ch. "
+				"Pre-convert with: ffmpeg -i in.* -ar 48000 -c:a pcm_s16le out.wav");
+			fclose(f);
+			return;
+		}
+	}
+	else
+	{
+		if (bits != 16 || (numCh != 1 && numCh != 2))
+		{
+			Debugprintf("debugDecodeWav: expected 16-bit PCM / 1 or 2 ch. "
+				"Pre-convert with: ffmpeg -i in.* -c:a pcm_s16le out.wav");
+			fclose(f);
+			return;
+		}
+		if (sampleRate < 12000)
+		{
+			Debugprintf("debugDecodeWav: sample rate %d Hz < 12000 Hz; "
+				"upsampling not supported, aborting", sampleRate);
+			fclose(f);
+			return;
+		}
+		decim = sampleRate / 12000;
+		if (decim > 8)
+		{
+			Debugprintf("debugDecodeWav: decim factor %d (sample rate %d Hz) "
+				"exceeds reasonable range; aborting", decim, sampleRate);
+			fclose(f);
+			return;
+		}
+		if (sampleRate % 12000 != 0)
+		{
+			Debugprintf("debugDecodeWav: WARNING %d Hz is not an integer "
+				"multiple of 12000 Hz; truncating to decim=%d (output rate "
+				"%d Hz, drift %.2f%%). Pre-resample for clean tests.",
+				sampleRate, decim, sampleRate / decim,
+				100.0 * (1.0 - 12000.0 * decim / sampleRate));
+		}
 	}
 
-	// Design the antialias FIR for 48 kHz. The live Qt path runs this
-	// from initializeAudioIn; the non-native debugDecodeWav runs it
-	// too. Without it here, BufferFull's using48000 48->12 kHz step
-	// (which now routes co-running FSK channels through
-	// decimateAudioToModem) would hit the fir_designed_rate==0
-	// safety fallback and silently keep the old aliased every-4th
-	// pick — so --decode-wav-native RUH+FSK tests would not exercise
-	// the BUG-rx-audit item-5 anti-aliasing at all. (Codex
-	// second-reviewer catch.)
-	aaFilterInit(48000);
+	// Design the antialias FIR for this file's rate, as initializeAudioIn
+	// does for live audio. The native path needs it too: BufferFull's
+	// using48000 48->12 kHz step routes co-running FSK channels through
+	// decimateAudioToModem, which would otherwise hit the
+	// fir_designed_rate==0 fallback (aliased every-4th pick).
+	aaFilterInit(sampleRate);
 
 	// Force one BPF/TXBPF coefficient computation per channel before
-	// the first sample lands in BufferFull (same rationale as
-	// debugDecodeWav).
+	// the first sample lands in the modem. Normally the GUI paths
+	// (RX-frequency change handlers, mode-change reload) set these
+	// flags during construction; headless no GUI runs so pnt_change
+	// stays FALSE and the modem code skips the make_core_BPF call,
+	// leaving zero filter coefficients and silently failing every
+	// decode. Mirror the GUI's "set all four flags TRUE on init".
 	extern int pnt_change[5];
 	for (int i = 0; i < 4; i++) pnt_change[i] = 1;
 
-	// Flag the audio path as 48 kHz native so BufferFull's runModems
-	// branch downsamples internally for FSK modems while leaving
-	// Samples[] at 48 kHz for the RUH branch (which reads it raw).
-	using48000 = 1;
+	// Native: flag the audio path as 48 kHz so BufferFull downsamples
+	// internally for FSK modems while leaving Samples[] at 48 kHz for
+	// the RUH branch. FIR path: mirror the constructor — an enabled RUH
+	// modem sets using48000 in the live app whatever the device rate,
+	// so a non-48 kHz device takes this FIR path with using48000 = 1.
+	using48000 = native;
+	if (!native)
+		for (int i = 0; i < 4; i++)
+			if (soundChannel[i] && (speed[i] == SPEED_RUH48 || speed[i] == SPEED_RUH96))
+				using48000 = 1;
 
-	// rx_bufsize is 512 frames AT 12 kHz (the modem's working rate).
-	// With using48000=1 BufferFull downsamples 4× internally, so the
-	// caller must supply 4× rx_bufsize = 2048 stereo frames per call
-	// at 48 kHz native. Mirrors the live-audio ReceiveSize path
-	// (QtSoundModem.cpp sets ReceiveSize=2048 when any RUH modem is
-	// active, which is exactly this case).
-	const int chunkFrames = 2048;
-	short stereoIn[2 * 2048];  // 4096 shorts per call
-	short monoBuf[2048];
+	// FIR path: 512 output frames at 12 kHz per chunk (matches
+	// PollQSound). Native: rx_bufsize (512 at 12 kHz) x 4 = 2048 frames
+	// at 48 kHz, as BufferFull downsamples 4x internally (mirrors the
+	// live ReceiveSize=2048 when a RUH modem is active).
+	const int chunkFrames = native ? 2048 : 512 * decim;
+	short stereoIn[2 * 512 * 8];	// sized for decim up to 8 (96 kHz)
+	short decimated[1024];
 	int totalInFrames = 0;
-	long framesLeft = dataChunkSize > 0 ? dataChunkSize / (2 * numCh) : LONG_MAX;	// see debugDecodeWav
+	// Stop at the end of the data chunk, not EOF: trailing LIST/id3
+	// chunks are not audio. A zero size (e.g. an unfinalised dump) means
+	// read to EOF.
+	long framesLeft = dataChunkSize > 0 ? dataChunkSize / (2 * numCh) : LONG_MAX;
 
-	while (1)
+	while (framesLeft >= chunkFrames)
 	{
-		if (framesLeft < chunkFrames) break;
 		framesLeft -= chunkFrames;
+		if ((int)fread(stereoIn, 2 * numCh, chunkFrames, f) < chunkFrames)
+			break;  // ignore short tail
+		// Mono: widen to stereo in place, back to front so no sample is
+		// overwritten before it is read.
 		if (numCh == 1)
-		{
-			size_t n = fread(monoBuf, sizeof(short), chunkFrames, f);
-			if ((int)n < chunkFrames) break;
-			for (int i = 0; i < chunkFrames; i++)
-			{
-				stereoIn[2 * i]     = monoBuf[i];
-				stereoIn[2 * i + 1] = monoBuf[i];
-			}
-		}
+			for (int i = chunkFrames - 1; i >= 0; i--)
+				stereoIn[2 * i] = stereoIn[2 * i + 1] = stereoIn[i];
+
+		if (native)
+			BufferFull(stereoIn, chunkFrames);
 		else
 		{
-			size_t n = fread(stereoIn, sizeof(short) * 2, chunkFrames, f);
-			if ((int)n < chunkFrames) break;  // ignore short tail (mono branch above too)
+			decimateAudioToModem(stereoIn, decim, decimated);
+			ProcessNewSamples(decimated, 512);
 		}
-
-		BufferFull(stereoIn, chunkFrames);
 		totalInFrames += chunkFrames;
 	}
 
 	fclose(f);
-	Debugprintf("debugDecodeWavNative: processed %d input frames (%.2f s at %d Hz)",
-		totalInFrames, (double)totalInFrames / sampleRate, sampleRate);
+	Debugprintf("%s: processed %d input frames (%.2f s at %d Hz)",
+		who, totalInFrames, (double)totalInFrames / sampleRate, sampleRate);
 }
 
 unsigned int getTicks(void)
