@@ -76,85 +76,34 @@ foreach(lib IN ITEMS FFTW3F HIDAPI)
     )
 endforeach()
 
-# Final ad-hoc signing pass. install_name_tool invalidates existing
-# signatures and dyld will refuse modified binaries with stale ones, so
-# this MUST be the last POST_BUILD step.
+# Final ad-hoc signing pass. install_name_tool invalidates signatures,
+# so this MUST be the last POST_BUILD step.
 #
-# Strategy:
-#   1. Scrub the bundle once via ditto --norsrc --noextattr --noacl to
-#      remove any com.apple.FinderInfo / fileprovider metadata that
-#      build/copy steps have left on package roots. Codesign rejects
-#      FinderInfo ("detritus not allowed"); com.apple.provenance is
-#      kernel-protected and codesign tolerates it.
-#   2. Sign nested code in dependency order: dylibs and frameworks in
-#      Frameworks/, then everything in PlugIns/.
-#   3. Codesign the .app bundle as a whole, in TMPDIR. Building under
-#      ~/Documents puts the .app inside macOS's file provider, which
-#      re-stamps com.apple.FinderInfo and com.apple.fileprovider.fpfs#P
-#      on package roots (.app, .framework) faster than `xattr -c` can
-#      clear them. Bundle-level codesign then dies with "detritus not
-#      allowed". TMPDIR (/var/folders/...) is outside file-provider
-#      control. We ditto the bundle there, sign, then ditto back. The
-#      signature is sealed inside Contents/_CodeSignature/CodeResources,
-#      so any FinderInfo stamped onto the in-place .app afterwards does
-#      not invalidate it. Without this final step the .app validates as
-#      "code has no resources but signature indicates they must be
-#      present".
+# All signing happens on a copy in TMPDIR. Under ~/Documents the file
+# provider re-stamps com.apple.FinderInfo on package roots (.app,
+# .framework) faster than it can be cleared, and codesign rejects it
+# ("detritus not allowed"). ditto --noextattr strips xattrs on the way
+# out and back; the seal lives in _CodeSignature, so FinderInfo stamped
+# on the in-place bundle afterwards does not invalidate it.
 add_custom_command(TARGET QtSoundModem POST_BUILD
     COMMAND /bin/bash -c
             "set -euo pipefail; \
              bundle='$<TARGET_BUNDLE_DIR:QtSoundModem>'; \
-             exe='$<TARGET_FILE:QtSoundModem>'; \
-             clean_xattrs() { \
-                 if [ -d \"$1\" ]; then \
-                     find \"$1\" -exec xattr -c {} \\; 2>/dev/null || true; \
-                 else \
-                     xattr -c \"$1\" 2>/dev/null || true; \
-                 fi; \
-             }; \
-             scrub_package_roots() { \
-                 tmp_parent=$(mktemp -d \"$bundle.resign.XXXXXX\"); \
-                 tmp_bundle=\"$tmp_parent/$(basename \"$bundle\")\"; \
-                 exe_backup=\"$tmp_parent/$(basename \"$exe\").backup\"; \
-                 if [ -f \"$exe\" ]; then \
-                     ditto --norsrc --noextattr --noacl \"$exe\" \"$exe_backup\"; \
-                 fi; \
-                 ditto --norsrc --noextattr --noacl \"$bundle\" \"$tmp_bundle\"; \
-                 rm -rf \"$bundle\"; \
-                 mv \"$tmp_bundle\" \"$bundle\"; \
-                 if [ -f \"$exe_backup\" ]; then \
-                     mkdir -p \"$(dirname \"$exe\")\"; \
-                     ditto --norsrc --noextattr --noacl \"$exe_backup\" \"$exe\"; \
-                     chmod u+x \"$exe\"; \
-                     rm -f \"$exe_backup\"; \
-                 fi; \
-                 rmdir \"$tmp_parent\"; \
-             }; \
-             sign_code() { \
-                 clean_xattrs \"$1\"; \
-                 codesign --force --sign - --timestamp=none \"$1\"; \
-             }; \
-             scrub_package_roots; \
              rm -rf \"$bundle/Contents/_CodeSignature\"; \
-             for f in \"$bundle\"/Contents/Frameworks/*.dylib; do \
-                 [ -e \"$f\" ] || continue; \
-                 sign_code \"$f\"; \
-             done; \
-             for f in \"$bundle\"/Contents/Frameworks/*.framework; do \
-                 [ -e \"$f\" ] || continue; \
-                 sign_code \"$f\"; \
-             done; \
-             if [ -d \"$bundle/Contents/PlugIns\" ]; then \
-                 find \"$bundle/Contents/PlugIns\" -name '*.dylib' -print0 | \
-                     while IFS= read -r -d '' f; do sign_code \"$f\"; done; \
-             fi; \
              sign_dir=$(mktemp -d -t qtsm-bundle-sign); \
-             sign_path=\"$sign_dir/$(basename \"$bundle\")\"; \
-             ditto --norsrc --noextattr --noacl \"$bundle\" \"$sign_path\"; \
-             codesign --force --sign - --timestamp=none \"$sign_path\"; \
+             trap 'rm -rf \"$sign_dir\"' EXIT; \
+             app=\"$sign_dir/$(basename \"$bundle\")\"; \
+             ditto --norsrc --noextattr --noacl \"$bundle\" \"$app\"; \
+             sign() { codesign --force --sign - --timestamp=none \"$@\"; }; \
+             for f in \"$app\"/Contents/Frameworks/*.dylib \"$app\"/Contents/Frameworks/*.framework; do \
+                 [ -e \"$f\" ] || continue; sign \"$f\"; \
+             done; \
+             if [ -d \"$app/Contents/PlugIns\" ]; then \
+                 find \"$app/Contents/PlugIns\" -name '*.dylib' -exec codesign --force --sign - --timestamp=none {} +; \
+             fi; \
+             sign \"$app\"; \
              rm -rf \"$bundle\"; \
-             ditto --norsrc --noextattr --noacl \"$sign_path\" \"$bundle\"; \
-             rm -rf \"$sign_dir\"; \
+             ditto --norsrc --noextattr --noacl \"$app\" \"$bundle\"; \
              codesign --verify --verbose=2 \"$bundle\""
     COMMENT "Signing QtSoundModem.app ad-hoc after macdeployqt and install_name_tool"
     VERBATIM
