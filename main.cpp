@@ -46,7 +46,7 @@ extern "C" int nonGUIMode;
 // Set by --decode-wav <path> on the command line. NULL means normal
 // audio path; non-NULL means the wav harness will run after worker
 // init and the process will exit when the wav is exhausted.
-extern "C" char * g_wavInputPath = NULL;
+extern "C" { char * g_wavInputPath = NULL; }
 extern "C" void debugDecodeWav(const char * path);
 
 // Set by --decode-wav-native <path>. Like --decode-wav but feeds 48 kHz
@@ -57,7 +57,7 @@ extern "C" void debugDecodeWav(const char * path);
 // can't decode. AFSK still works because BufferFull's runModems path
 // downsamples internally (naive 4-sample-skip; less clean than the
 // FIR path but adequate for the clean direwolf test signals).
-extern "C" char * g_wavInputNativePath = NULL;
+extern "C" { char * g_wavInputNativePath = NULL; }
 extern "C" void debugDecodeWavNative(const char * path);
 
 // Set by --dump-input <path>. When non-NULL, PollQSound additionally
@@ -65,7 +65,7 @@ extern "C" void debugDecodeWavNative(const char * path);
 // Lets us compare what Qt is actually delivering against the working
 // reference wav. The file is written incrementally; the WAV header's
 // data-size field is patched up at exit (or left zero on a kill).
-extern "C" char * g_dumpInputPath = NULL;
+extern "C" { char * g_dumpInputPath = NULL; }
 
 extern void getSettings();
 extern void saveSettings();
