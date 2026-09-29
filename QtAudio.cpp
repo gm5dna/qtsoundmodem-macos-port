@@ -42,42 +42,13 @@ void saveSettings();
 extern "C" void set_speed(int snd_ch, int Modem);
 extern "C" void AGW_Report_Modem_Change(int port);
 extern "C" int InitSound(BOOL Report);
-extern workerThread *t;
-extern QCoreApplication * a;
-extern serialThread *serial;
-extern "C" void CloseSound();
-extern "C" void GetSoundDevices();
-extern "C" char modes_name[modes_count][21];
 extern "C" int speed[5];
-extern "C" int KISSPort;
-extern "C" short rx_freq[5];
 extern "C" int CaptureCount;
 extern "C" int PlaybackCount;
-extern "C" int PlayBackIndex;
 extern "C" char CaptureNames[256][256];
 extern "C" char PlaybackNames[256][256];
 extern "C" int SoundMode;
-extern "C" bool onlyMixSnoop;
-extern "C" int multiCore;
-extern "C" int refreshModems;
-extern "C" int pnt_change[5];
-extern "C" int needRSID[4];
-extern "C" int needSetOffset[4];
-extern "C" float MagOut[4096];
-extern "C" float MaxMagOut;
-extern "C" int MaxMagIndex;
 extern "C" int ReceiveSize;
-extern "C" int txLatency;
-extern "C" int BusyDet;
-extern "C" char CWIDMark[32];
-extern "C" int NeedWaterfallHeaders;
-extern "C" float BinSize;
-extern "C" unsigned int pskStates[4];
-extern "C" bool useKISSControls;
-extern "C" int UDPClientPort;
-extern "C" int UDPServerPort;
-extern "C" int TXPort;
-extern char UDPHost[64];
 extern QList<QAudioDevice> inputDevices;
 extern QList<QAudioDevice> outputDevices;
 extern QList<QAudioDevice> inputDevicesFiltered;
@@ -91,7 +62,7 @@ extern "C" unsigned char CurrentLevelR;
 
 #if defined(Q_OS_MACOS)
 // macOS device-rate retune wiring. The C entry lives in
-// MacAudioRate.mm; result codes mirror QSM_RETUNE_* there.
+// MacAudioRate.mm; only its two OK codes are mirrored here.
 // The two QByteArrays gate the per-device "couldn't change rate"
 // warning so it shows once per UID rather than on every audio
 // event. They live at file scope because three call sites
@@ -101,12 +72,6 @@ extern "C" int macSetDeviceNominalSampleRate(const char *uidUtf8,
 enum {
     QSM_RETUNE_OK_NO_CHANGE         =  0,
     QSM_RETUNE_OK_CHANGED           =  1,
-    QSM_RETUNE_ERR_DEVICE_NOT_FOUND = -2,
-    QSM_RETUNE_ERR_NO_MATCHING_RATE = -3,
-    QSM_RETUNE_ERR_SET_FAILED       = -4,
-    QSM_RETUNE_ERR_TIMEOUT          = -5,
-    QSM_RETUNE_ERR_QUERY_FAILED     = -6,
-    QSM_RETUNE_ERR_NOT_SETTABLE     = -7,
 };
 static QByteArray s_lastWarnedRetuneIn;
 static QByteArray s_lastWarnedRetuneOut;
@@ -599,30 +564,9 @@ static bool s_devChangeDeferred = false;
      if (lastWarnedKey == uid) return;
      lastWarnedKey = uid;
 
-     QString reason;
-     switch (rc) {
-     case QSM_RETUNE_ERR_NO_MATCHING_RATE:
-         reason = tr("none of 48, 96, 24 or 12 kHz are available "
-                     "as a nominal rate on this device"); break;
-     case QSM_RETUNE_ERR_NOT_SETTABLE:
-         reason = tr("the device's sample rate is read-only and "
-                     "cannot be changed programmatically"); break;
-     case QSM_RETUNE_ERR_SET_FAILED:
-         reason = tr("CoreAudio refused the rate change "
-                     "(another application may be holding the device)");
-         break;
-     case QSM_RETUNE_ERR_TIMEOUT:
-         reason = tr("the device acknowledged the change but did "
-                     "not commit it within 2 seconds"); break;
-     case QSM_RETUNE_ERR_DEVICE_NOT_FOUND:
-         reason = tr("the device disappeared from CoreAudio's "
-                     "device list"); break;
-     case QSM_RETUNE_ERR_QUERY_FAILED:
-         reason = tr("the device's current sample rate could not "
-                     "be read"); break;
-     default:
-         reason = tr("unexpected error code %1").arg(rc); break;
-     }
+     QString detail = QString::fromUtf8(errBuf);
+     if (detail.isEmpty())
+         detail = tr("retune failed (code %1)").arg(rc);
 
      QMessageBox::warning(this,
          tr("Could not set %1 device sample rate").arg(direction),
@@ -630,8 +574,7 @@ static bool s_devChangeDeferred = false;
             "rate. Please open Audio MIDI Setup and set this device "
             "to 48 kHz manually.\n\nDetail: %2")
              .arg(deviceInfo.description())
-             .arg(QString::fromUtf8(errBuf).isEmpty()
-                  ? reason : QString::fromUtf8(errBuf)));
+             .arg(detail));
  }
  #endif
 

@@ -19,13 +19,18 @@
 enum {
     QSM_RETUNE_OK_NO_CHANGE         =  0,
     QSM_RETUNE_OK_CHANGED           =  1,
-    QSM_RETUNE_ERR_NOT_MACOS        = -1,
     QSM_RETUNE_ERR_DEVICE_NOT_FOUND = -2,
     QSM_RETUNE_ERR_NO_MATCHING_RATE = -3,
     QSM_RETUNE_ERR_SET_FAILED       = -4,
     QSM_RETUNE_ERR_TIMEOUT          = -5,
     QSM_RETUNE_ERR_QUERY_FAILED     = -6,
     QSM_RETUNE_ERR_NOT_SETTABLE     = -7,
+};
+
+static const AudioObjectPropertyAddress kNominalRate = {
+    kAudioDevicePropertyNominalSampleRate,
+    kAudioObjectPropertyScopeGlobal,
+    kAudioObjectPropertyElementMain
 };
 
 static AudioDeviceID lookupDeviceByUID(const char *uidUtf8) {
@@ -51,23 +56,13 @@ static AudioDeviceID lookupDeviceByUID(const char *uidUtf8) {
 }
 
 static OSStatus getCurrentRate(AudioDeviceID dev, Float64 *out) {
-    AudioObjectPropertyAddress a = {
-        kAudioDevicePropertyNominalSampleRate,
-        kAudioObjectPropertyScopeGlobal,
-        kAudioObjectPropertyElementMain
-    };
     UInt32 sz = sizeof(*out);
-    return AudioObjectGetPropertyData(dev, &a, 0, NULL, &sz, out);
+    return AudioObjectGetPropertyData(dev, &kNominalRate, 0, NULL, &sz, out);
 }
 
 static Boolean rateIsSettable(AudioDeviceID dev) {
-    AudioObjectPropertyAddress a = {
-        kAudioDevicePropertyNominalSampleRate,
-        kAudioObjectPropertyScopeGlobal,
-        kAudioObjectPropertyElementMain
-    };
     Boolean settable = false;
-    OSStatus st = AudioObjectIsPropertySettable(dev, &a, &settable);
+    OSStatus st = AudioObjectIsPropertySettable(dev, &kNominalRate, &settable);
     return (st == noErr) && settable;
 }
 
@@ -94,27 +89,8 @@ static Boolean deviceSupportsRate(AudioDeviceID dev, Float64 rate) {
     return found;
 }
 
-static Boolean isAggregateDevice(AudioDeviceID dev) {
-    AudioObjectPropertyAddress a = {
-        kAudioObjectPropertyClass,
-        kAudioObjectPropertyScopeGlobal,
-        kAudioObjectPropertyElementMain
-    };
-    UInt32 cls = 0;
-    UInt32 sz = sizeof(cls);
-    if (AudioObjectGetPropertyData(dev, &a, 0, NULL, &sz, &cls) != noErr)
-        return false;
-    return cls == kAudioAggregateDeviceClassID;
-}
-
 static int setRateAndWait(AudioDeviceID dev, Float64 desired,
                           char *errBuf, int errBufLen) {
-    AudioObjectPropertyAddress a = {
-        kAudioDevicePropertyNominalSampleRate,
-        kAudioObjectPropertyScopeGlobal,
-        kAudioObjectPropertyElementMain
-    };
-
     if (!rateIsSettable(dev)) {
         if (errBuf) snprintf(errBuf, errBufLen,
             "device does not allow programmatic rate changes "
@@ -129,10 +105,10 @@ static int setRateAndWait(AudioDeviceID dev, Float64 desired,
             dispatch_semaphore_signal(sem);
         };
     dispatch_queue_t q = dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0);
-    OSStatus addSt = AudioObjectAddPropertyListenerBlock(dev, &a, q, listener);
+    OSStatus addSt = AudioObjectAddPropertyListenerBlock(dev, &kNominalRate, q, listener);
 
     OSStatus setSt = AudioObjectSetPropertyData(
-        dev, &a, 0, NULL, sizeof(desired), &desired);
+        dev, &kNominalRate, 0, NULL, sizeof(desired), &desired);
 
     int rc;
     if (setSt != noErr) {
@@ -162,7 +138,7 @@ static int setRateAndWait(AudioDeviceID dev, Float64 desired,
     }
 
     if (addSt == noErr)
-        AudioObjectRemovePropertyListenerBlock(dev, &a, q, listener);
+        AudioObjectRemovePropertyListenerBlock(dev, &kNominalRate, q, listener);
 
     // This .mm builds without ARC (matching MacPermissions.mm); the
     // dispatch_semaphore_create reference must be released here or
@@ -188,12 +164,6 @@ extern "C" int macSetDeviceNominalSampleRate(
         if (errBuf) snprintf(errBuf, errBufLen,
             "device with UID '%s' not found in CoreAudio", uidUtf8);
         return QSM_RETUNE_ERR_DEVICE_NOT_FOUND;
-    }
-
-    if (isAggregateDevice(dev)) {
-        fprintf(stderr,
-            "[QtSM] note: device UID '%s' is an aggregate; "
-            "rate change applies to all member devices.\n", uidUtf8);
     }
 
     Float64 cur = 0.0;
