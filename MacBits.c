@@ -627,27 +627,23 @@ static int parseWavHeader(FILE * f, const char * path,
 	long dataStart = -1;
 
 	// Walk chunks until we have fmt + data. Skip everything else
-	// (LIST metadata, JUNK alignment, etc.). chunkSize is unsigned
-	// in the WAV spec (DWORD); reading via signed int and rejecting
-	// negatives catches malformed files cheaply rather than seeking
-	// to a wild offset.
+	// (LIST metadata, JUNK alignment, etc.). chunkSize is an unsigned
+	// DWORD, and odd-sized chunks are followed by a pad byte that the
+	// size does not include. A bogus size just seeks past EOF and the
+	// next fread ends the walk.
 	while (1)
 	{
 		unsigned char ch[8];
 		if (fread(ch, 1, 8, f) != 8) break;
-		int chunkSize = ch[4] | (ch[5] << 8) | (ch[6] << 16) | (ch[7] << 24);
-		if (chunkSize < 0)
-		{
-			Debugprintf("parseWavHeader: malformed chunk size %d in %s", chunkSize, path);
-			break;
-		}
+		unsigned int chunkSize = ch[4] | (ch[5] << 8) | (ch[6] << 16) | ((unsigned int)ch[7] << 24);
+		long skip = (long)chunkSize + (chunkSize & 1);
 
 		if (memcmp(ch, "fmt ", 4) == 0)
 		{
 			unsigned char fmt[40] = {0};
-			int n = chunkSize > (int)sizeof(fmt) ? (int)sizeof(fmt) : chunkSize;
+			long n = skip > (long)sizeof(fmt) ? (long)sizeof(fmt) : (long)chunkSize;
 			if (fread(fmt, 1, n, f) != (size_t)n) break;
-			if (n < chunkSize) fseek(f, chunkSize - n, SEEK_CUR);
+			if (n < skip) fseek(f, skip - n, SEEK_CUR);
 			// PCMWAVEFORMAT layout: format(0-1) channels(2-3) rate(4-7)
 			// byterate(8-11) blockalign(12-13) bits(14-15).
 			formatTag = (short)(fmt[0] | (fmt[1] << 8));
@@ -658,12 +654,14 @@ static int parseWavHeader(FILE * f, const char * path,
 		else if (memcmp(ch, "data", 4) == 0)
 		{
 			dataStart = ftell(f);
-			dataChunkSize = chunkSize;
+			// 0xFFFFFFFF is the placeholder streaming writers (ffmpeg
+			// to a pipe) leave; treat any size past INT_MAX as unknown.
+			dataChunkSize = chunkSize > INT_MAX ? 0 : (int)chunkSize;
 			break;
 		}
 		else
 		{
-			if (fseek(f, chunkSize, SEEK_CUR) != 0) break;
+			if (fseek(f, skip, SEEK_CUR) != 0) break;
 		}
 	}
 
@@ -798,8 +796,8 @@ void debugDecodeWav(const char * path, int native)
 	short decimated[1024];
 	int totalInFrames = 0;
 	// Stop at the end of the data chunk, not EOF: trailing LIST/id3
-	// chunks are not audio. A zero size (e.g. an unfinalised dump) means
-	// read to EOF.
+	// chunks are not audio. A zero size (an unfinalised dump, or the
+	// 0xFFFFFFFF placeholder from a pipe) means read to EOF.
 	long framesLeft = dataChunkSize > 0 ? dataChunkSize / (2 * numCh) : LONG_MAX;
 
 	while (framesLeft >= chunkFrames)

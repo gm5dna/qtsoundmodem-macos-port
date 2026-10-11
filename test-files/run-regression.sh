@@ -78,6 +78,7 @@ run_one() {
 	local mode="$2"          # "fir" or "native"
 	local expected_min="$3"
 	local src="${CORPUS_DIR}/${file}"
+	case "${file}" in /*) src="${file}" ;; esac
 
 	if [ ! -f "${src}" ]; then
 		printf "MISSING %-55s (%s)\n" "${file}" "${src}"
@@ -135,5 +136,18 @@ while IFS=$'\t' read -r file mode expected; do
 	case "${file}" in ''|\#*) continue ;; esac
 	run_one "${file}" "${mode}" "${expected}" || fail=1
 done < "${SCRIPT_DIR}/expected.txt"
+
+# WAV header edge cases, built from a corpus file with a canonical
+# 44-byte header: an odd-length LIST chunk (pad byte not in its size)
+# before data, and the 0xFFFFFFFF data size a pipe-streaming writer
+# leaves. Must decode exactly what the original does.
+base="${CORPUS_DIR}/direwolf-test-files/02_ax25_1200bps_afsk.wav"
+if [ -f "${base}" ]; then
+	odd="${TMPDIR_REG}/riff-edge-cases.wav"
+	{ head -c 36 "${base}"
+	  printf 'LIST\x03\x00\x00\x00abc\x00data\xff\xff\xff\xff'
+	  tail -c +45 "${base}"; } > "${odd}"
+	run_one "${odd}" native 175 || fail=1
+fi
 
 exit ${fail}
