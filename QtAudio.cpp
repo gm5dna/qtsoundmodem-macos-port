@@ -62,17 +62,12 @@ extern "C" unsigned char CurrentLevelR;
 
 #if defined(Q_OS_MACOS)
 // macOS device-rate retune wiring. The C entry lives in
-// MacAudioRate.mm; only its two OK codes are mirrored here.
+// MacAudioRate.mm.
 // The two QByteArrays gate the per-device "couldn't change rate"
 // warning so it shows once per UID rather than on every audio
 // event. They live at file scope because three call sites
 // (deviceaccept, QtSoundInit, onAudioDevicesChanged) need them.
-extern "C" int macSetDeviceNominalSampleRate(const char *uidUtf8,
-    double *outChosenRate, char *errBuf, int errBufLen);
-enum {
-    QSM_RETUNE_OK_NO_CHANGE         =  0,
-    QSM_RETUNE_OK_CHANGED           =  1,
-};
+#include "MacAudioRate.h"
 static QByteArray s_lastWarnedRetuneIn;
 static QByteArray s_lastWarnedRetuneOut;
 // Re-entry guard. retuneDeviceIfNeeded calls QCoreApplication::
@@ -564,17 +559,13 @@ static bool s_devChangeDeferred = false;
      if (lastWarnedKey == uid) return;
      lastWarnedKey = uid;
 
-     QString detail = QString::fromUtf8(errBuf);
-     if (detail.isEmpty())
-         detail = tr("retune failed (code %1)").arg(rc);
-
      QMessageBox::warning(this,
          tr("Could not set %1 device sample rate").arg(direction),
          tr("Could not switch \"%1\" to a 48 kHz-compatible sample "
             "rate. Please open Audio MIDI Setup and set this device "
             "to 48 kHz manually.\n\nDetail: %2")
              .arg(deviceInfo.description())
-             .arg(detail));
+             .arg(QString::fromUtf8(errBuf)));
  }
  #endif
 
