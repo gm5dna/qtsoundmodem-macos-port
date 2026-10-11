@@ -978,7 +978,9 @@ void workerThread::run()
 	// Settings are saved by main() on the GUI thread once this returns.
 	qDebug() << "Main Loop exited";
 
-	qApp->exit();
+	// Queued: a direct exit() is dropped if main() has not reached
+	// exec() yet, which a fast --decode-wav failure can beat.
+	QMetaObject::invokeMethod(qApp, &QCoreApplication::quit, Qt::QueuedConnection);
 
 };
 
