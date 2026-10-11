@@ -68,4 +68,10 @@ if "$SCRIPT" "$fixture" "mac-9.9.9" >/dev/null 2>&1; then
 fi
 echo "ok - unknown stable version errors"
 
+# Case 4: CRLF line endings give the same body, with no stray CRs
+sed 's/$/\r/' "$fixture" >"$fixture.crlf"
+actual_4="$("$SCRIPT" "$fixture.crlf" "mac-0.1.0")"
+rm -f "$fixture.crlf"
+assert_eq "CRLF changelog returns the same section" "$expected_1" "$actual_4"
+
 echo "All tests passed."

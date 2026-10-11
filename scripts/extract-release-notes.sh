@@ -30,6 +30,7 @@ fi
 # "[x]: url" link reference, minus leading and trailing blank lines.
 extract_section() {
     awk -v h="## [$1]" '
+        { sub(/\r$/, "") }  # tolerate a CRLF CHANGELOG
         !in_section { in_section = index($0, h) == 1; next }
         /^## \[/ || /^\[.*\]:/ { exit }
         NF { started = 1 }
