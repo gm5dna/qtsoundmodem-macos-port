@@ -22,6 +22,16 @@ This fork starts at `mac-0.1.0`. Pre-fork history (upstream tags `0.64`–`0.76`
 - Changing a modem type in the main window now applies between chunks on the modem thread (Qt audio).
 - Long IL2P monitor lines were cut at 1023 characters.
 - `--dump-input` WAVs had zero-length headers; `--decode-wav` read past the data chunk.
+- AGW: connect, data and disconnect from AGW clients changed link-layer state on the GUI thread while the modem worker used it, risking double frees and use-after-free (also upstream).
+- UDP server mode: the PTT-drop timer flushed audio and keyed the radio from the GUI thread, racing the modem worker (also upstream).
+- The 100 ms timer tick was shared between the GUI and the modem worker without synchronisation (also upstream).
+- RSID: the detector was fed interleaved stereo as if it were mono, so every tone landed in the wrong bin (also upstream).
+- Quitting no longer saves settings from the modem thread while it is still running; the GUI stops the worker first, then saves.
+- `--decode-wav`: a transmit during a decode run (e.g. from an AGW client) crashed.
+- `--decode-wav`: WAVs with an odd-length metadata chunk before the audio, or the `0xFFFFFFFF` data size that `ffmpeg` writes to a pipe, decoded nothing.
+- `--decode-wav`: a run that failed quickly (e.g. on a bad header) could hang instead of exiting.
+- The app bundle shipped two copies of `libhidapi`.
+- Release notes kept stray carriage returns when `CHANGELOG.md` had Windows line endings.
 
 ### Changed
 
@@ -30,6 +40,9 @@ This fork starts at `mac-0.1.0`. Pre-fork history (upstream tags `0.64`–`0.76`
 - Audio gain sliders apply and save on release instead of on every step.
 - CI builds and runs the decode regression on every push and pull request (macOS 26 runner); the corpus is the `corpus-v1` release asset.
 - The regression runner uses a fixture INI instead of the user's own settings.
+- CI also builds on Linux (Ubuntu 26.04), and port-owned sources build warning-free under `-Werror` (`QSM_STRICT`) on both.
+- The ad-hoc signing pass signs the bundle once, on a copy in `TMPDIR`, which avoids `~/Documents` file-provider metadata breaking `codesign`.
+- `--decode-wav` and `--decode-wav-native` share one WAV reader.
 
 ### Removed
 
